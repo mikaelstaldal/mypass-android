@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The vault, its backup, the settings and the biometric-wrapped passphrase all
+  stay on the device: nothing here is backed up to the cloud or transferred to
+  a new device. Move a vault deliberately, with Settings -> Export vault.
+-->
+<full-backup-content>
+    <exclude domain="file" />
+    <exclude domain="database" />
+    <exclude domain="sharedpref" />
+</full-backup-content>

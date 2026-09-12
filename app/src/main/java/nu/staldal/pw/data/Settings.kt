@@ -1,0 +1,110 @@
+package nu.staldal.pw.data
+
+import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+
+private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "pw-settings")
+
+/** Everything the user can configure. Nothing secret is stored here. */
+data class SettingsState(
+    /**
+     * Minutes of inactivity after which the vault relocks, counted from the
+     * last time it was read or written. 0 means "not on a timer" — the vault
+     * then stays open until you lock it or the process dies. This is the
+     * counterpart of the desktop browser host's `cache_minutes`.
+     */
+    val autoLockMinutes: Int = DEFAULT_AUTO_LOCK_MINUTES,
+    /**
+     * Also lock the moment the app leaves the foreground. Off by default,
+     * because the autofill service shares this process: with it on, every
+     * autofill in a browser needs the passphrase again.
+     */
+    val lockOnBackground: Boolean = false,
+    /**
+     * Seconds a copied password stays on the clipboard before pw clears it.
+     * 0 leaves the clipboard untouched.
+     */
+    val clipboardClearSeconds: Int = DEFAULT_CLIPBOARD_CLEAR_SECONDS,
+    val passwordLength: Int = PasswordGenerator.DEFAULT_LENGTH,
+    val passwordCharset: String = PasswordGenerator.DEFAULT_CHARSET,
+    /**
+     * log2(N) for the scrypt KDF when writing the vault. The default, 17, is
+     * what desktop `pw` writes and needs ~128 MiB; a low-memory phone may need
+     * less, at the cost of a cheaper offline attack on the file.
+     */
+    val scryptLogN: Int = ScryptDefaults.LOG_N,
+    /**
+     * Extra browser packages whose reported web domain is trusted, beyond
+     * [nu.staldal.pw.autofill.Browsers.KNOWN]. Comma- or whitespace-separated.
+     */
+    val extraBrowserPackages: String = "",
+) {
+    companion object {
+        const val DEFAULT_AUTO_LOCK_MINUTES = 5
+        const val DEFAULT_CLIPBOARD_CLEAR_SECONDS = 20
+    }
+}
+
+object ScryptDefaults {
+    const val LOG_N = 17
+    const val MIN_LOG_N = 10
+    const val MAX_LOG_N = 20
+}
+
+class Settings(context: Context) {
+
+    private val store = context.applicationContext.dataStore
+
+    val state: Flow<SettingsState> = store.data.map { prefs ->
+        SettingsState(
+            autoLockMinutes = prefs[AUTO_LOCK_MINUTES]
+                ?: SettingsState.DEFAULT_AUTO_LOCK_MINUTES,
+            lockOnBackground = prefs[LOCK_ON_BACKGROUND] ?: false,
+            clipboardClearSeconds = prefs[CLIPBOARD_CLEAR_SECONDS]
+                ?: SettingsState.DEFAULT_CLIPBOARD_CLEAR_SECONDS,
+            passwordLength = prefs[PASSWORD_LENGTH] ?: PasswordGenerator.DEFAULT_LENGTH,
+            passwordCharset = prefs[PASSWORD_CHARSET] ?: PasswordGenerator.DEFAULT_CHARSET,
+            scryptLogN = prefs[SCRYPT_LOG_N] ?: ScryptDefaults.LOG_N,
+            extraBrowserPackages = prefs[EXTRA_BROWSER_PACKAGES] ?: "",
+        )
+    }
+
+    suspend fun setAutoLockMinutes(value: Int) = put(AUTO_LOCK_MINUTES, value.coerceAtLeast(0))
+
+    suspend fun setLockOnBackground(value: Boolean) = put(LOCK_ON_BACKGROUND, value)
+
+    suspend fun setClipboardClearSeconds(value: Int) =
+        put(CLIPBOARD_CLEAR_SECONDS, value.coerceAtLeast(0))
+
+    suspend fun setPasswordLength(value: Int) =
+        put(PASSWORD_LENGTH, value.coerceIn(1, PasswordGenerator.MAX_LENGTH))
+
+    suspend fun setPasswordCharset(value: String) = put(PASSWORD_CHARSET, value)
+
+    suspend fun setScryptLogN(value: Int) =
+        put(SCRYPT_LOG_N, value.coerceIn(ScryptDefaults.MIN_LOG_N, ScryptDefaults.MAX_LOG_N))
+
+    suspend fun setExtraBrowserPackages(value: String) = put(EXTRA_BROWSER_PACKAGES, value)
+
+    private suspend fun <T> put(key: Preferences.Key<T>, value: T) {
+        store.edit { it[key] = value }
+    }
+
+    private companion object {
+        val AUTO_LOCK_MINUTES = intPreferencesKey("auto_lock_minutes")
+        val LOCK_ON_BACKGROUND = booleanPreferencesKey("lock_on_background")
+        val CLIPBOARD_CLEAR_SECONDS = intPreferencesKey("clipboard_clear_seconds")
+        val PASSWORD_LENGTH = intPreferencesKey("password_length")
+        val PASSWORD_CHARSET = stringPreferencesKey("password_charset")
+        val SCRYPT_LOG_N = intPreferencesKey("scrypt_log_n")
+        val EXTRA_BROWSER_PACKAGES = stringPreferencesKey("extra_browser_packages")
+    }
+}
