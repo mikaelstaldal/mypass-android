@@ -42,6 +42,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.fragment.app.FragmentActivity
+import nu.staldal.pw.autofill.BrowserCertificates
+import nu.staldal.pw.autofill.Browsers
 import nu.staldal.pw.data.ScryptDefaults
 import nu.staldal.pw.data.SettingsState
 import nu.staldal.pw.ui.VaultViewModel
@@ -60,7 +62,7 @@ fun SettingsScreen(
     onPasswordLength: (Int) -> Unit,
     onPasswordCharset: (String) -> Unit,
     onScryptLogN: (Int) -> Unit,
-    onExtraBrowserPackages: (String) -> Unit,
+    onBrowserCertificatePins: (String) -> Unit,
 ) {
     val context = LocalContext.current
     val activity = context as? FragmentActivity
@@ -226,13 +228,7 @@ fun SettingsScreen(
                 Text(if (autofillEnabled) "Autofill settings" else "Use pw for autofill")
             }
             Spacer(Modifier.height(12.dp))
-            TextSetting(
-                label = "Extra browser packages",
-                help = "pw believes a web address only from a browser it knows. " +
-                    "Add your browser's package name here if it is not offered a fill.",
-                value = settings.extraBrowserPackages,
-                onValue = onExtraBrowserPackages,
-            )
+            BrowserEnrollment(settings.browserCertificatePins, onBrowserCertificatePins)
 
             HorizontalDivider(Modifier.padding(vertical = 16.dp))
             SectionHeader("Vault file")
@@ -529,5 +525,67 @@ private fun SwitchSetting(
             }
         }
         Switch(checked = checked, onCheckedChange = onChecked, enabled = enabled)
+    }
+}
+
+@Composable
+private fun BrowserEnrollment(pins: String, onPins: (String) -> Unit) {
+    val context = LocalContext.current
+    var packageName by remember { mutableStateOf("") }
+    var pending by remember { mutableStateOf<Pair<String, Browsers.Identity>?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var feedback by remember { mutableStateOf<String?>(null) }
+    Text("Other browser distributions need explicit certificate enrollment. " +
+        "Previous package-only permissions were removed.", style = MaterialTheme.typography.bodySmall)
+    OutlinedTextField(
+        value = packageName,
+        onValueChange = { packageName = it; error = null; feedback = null },
+        label = { Text("Installed browser package") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    OutlinedButton(onClick = {
+        error = null
+        feedback = null
+        val pkg = packageName.trim()
+        val identity = if (Browsers.validPackageName(pkg))
+            BrowserCertificates.read(context.packageManager, pkg) else null
+        if (identity == null) error = "Cannot check this app's certificate. It may be uninstalled or not visible as a web browser. No trust granted."
+        else pending = pkg to identity
+    }, enabled = packageName.isNotBlank()) { Text("Review enrollment") }
+    error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    feedback?.let { Text(it) }
+    Browsers.parseEnrollments(pins).forEach { (pkg, digests) ->
+        Text(pkg)
+        Text(digests.sorted().joinToString("\n"), style = MaterialTheme.typography.bodySmall)
+        TextButton(onClick = { onPins(Browsers.remove(pins, pkg)) }) {
+            Text("Remove enrollment")
+        }
+    }
+    pending?.let { (pkg, identity) ->
+        AlertDialog(
+            onDismissRequest = { pending = null },
+            title = { Text("Trust this browser?") },
+            text = { Column {
+                Text("$pkg may claim ANY website and receive credentials for it. " +
+                    "Only enroll an app whose publisher and installation source you trust. " +
+                    "The certificate shown identifies this installed app; it does not prove it is safe.")
+                if (pkg in Browsers.KNOWN) Text("This adds an acceptable signer alongside pw's built-in publisher pins.")
+                Text("SHA-256 signing certificates:")
+                Text(identity.current.sorted().joinToString("\n"))
+            } },
+            confirmButton = { TextButton(onClick = {
+                // Recheck so an uninstall/reinstall during disclosure cannot silently enroll a new key.
+                val fresh = BrowserCertificates.read(context.packageManager, pkg)
+                if (fresh == identity) {
+                    onPins(Browsers.enroll(pins, pkg, identity))
+                    error = null
+                    feedback = "Browser certificate enrolled."
+                }
+                else error = "The installed app changed. Review its certificate again."
+                pending = null
+            }) { Text("Trust this installed app") } },
+            dismissButton = { TextButton(onClick = { pending = null }) { Text("Cancel") } },
+        )
     }
 }

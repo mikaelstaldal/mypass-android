@@ -30,7 +30,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun setScryptLogN(value: Int) = edit { settings.setScryptLogN(value) }
 
-    fun setExtraBrowserPackages(value: String) = edit { settings.setExtraBrowserPackages(value) }
+    fun setBrowserCertificatePins(value: String) = edit { settings.setBrowserCertificatePins(value) }
 
     private fun edit(block: suspend () -> Unit) {
         viewModelScope.launch { block() }

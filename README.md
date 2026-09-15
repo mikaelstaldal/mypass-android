@@ -132,15 +132,57 @@ comes before that is known.
 
 ### Which browsers
 
-`autofill/Browsers.kt` lists the packages whose claim of a web address is
-believed: the Firefox family and its rebuilds, the Chromium family and its
-rebuilds, Samsung Internet, and a handful of others. This is the Android
-counterpart of the desktop host's `allowed_extensions` pin.
+**Migration notice:** Brave, Edge, Vivaldi, Opera, DuckDuckGo, Tor, and Firefox
+rebuilds require explicit enrollment of their installed certificates. The
+browsers listed below have built-in publisher pins. Old package-only trust is
+removed rather than silently trusting an installed replacement.
 
-If your browser is not on the list, pw will silently decline to fill in it.
-Add its package name under **Settings → Extra browser packages** rather than
-going without — a package name is a weak trust anchor, but a password manager
-that does nothing is a worse one.
+`autofill/Browsers.kt` pins SHA-256 signing-certificate digests for:
+
+- Firefox, Firefox Beta, and Firefox Nightly (`org.mozilla.fenix`).
+- Chrome Stable, Beta, Dev, and Canary.
+- Samsung Internet and Samsung Internet Beta.
+
+Firefox pins come from [Mozilla's certificate documentation](https://firefox-source-docs.mozilla.org/mobile/android/fenix/certificates.html).
+Chrome and Samsung Internet pins come from
+[Google's curated credential-browser allowlist](https://www.gstatic.com/gpm-passkeys-privileged-apps/apps.json),
+retrieved on 2026-09-15, using its release entries. Google is the sole source for
+the Chrome/Samsung browser package-to-certificate associations; this is not a
+claim that each browser publisher independently documented those associations.
+Samsung's `C8A2…2AB8` key is excluded despite Google's release label: the
+[Samsung Account assetlinks](https://account.samsung.com/.well-known/assetlinks.json)
+entry for `com.osp.app.signin` annotates its fingerprint list
+`debug,platform,R_platformkey`. Read positionally, this suggests `C8A2…2AB8` is
+a debug key and the retained `34DF…0A42` is a Samsung platform key. This is an
+inference from a free-form comment for Samsung Account, not a browser-specific
+build label, so pw errs on the side of excluding the suspected debug key.
+The platform certificate may sign other Samsung apps, but trust remains scoped
+to the two Samsung Internet packages. Different distributions may need enrollment.
+The tests keep an offline excerpt of Google's list to verify pin transcription;
+builds and autofill never fetch that list automatically.
+
+A package name alone never grants trust. Both fill and save check the installed
+package's certificates afresh and fail closed if they cannot be read (including
+package-visibility restrictions). Android-verified single-signer rotation history
+can link a new key to a pinned one; apps with multiple signers require every
+current signer to be pinned.
+
+Other browsers, rebuilds, and differently signed distributions require
+**Settings → Installed browser package → Review enrollment**. Install from a
+source you trust, review the package and SHA-256 certificate disclosure, then
+explicitly confirm. An enrolled app may claim **any website** and receive its
+credentials: enrollment identifies the installed publisher, not its honesty.
+Enrollments can be removed in Settings. Old package-only permissions are not
+migrated and must be enrolled again. Pins live in local settings outside the
+shared vault and are excluded from backup/transfer.
+
+Built-in pins require maintenance: verify new distributions and certificate
+changes against publisher documentation, authenticated release artifacts, or
+Google's curated credential-browser release list before updating the map and
+rebuilding pw. Check for debug/test keys even when a list labels them release.
+Unlinked key changes and local rebuilds fail closed until deliberately enrolled;
+never substitute a package-only
+fallback. No network lookup is performed by pw.
 
 ### Matching parity with the desktop
 
@@ -180,7 +222,7 @@ app unchanged.
 
 | Threat | Mitigation |
 |---|---|
-| A malicious app claiming to be a web page on your bank's domain | A web address counts only from a package pw recognises as a browser. Anything else gets no datasets at all. |
+| A malicious app claiming to be a web page on your bank's domain | A web address counts only from a package with a pinned or explicitly enrolled signing certificate. A sideloaded replacement under a known browser name with another certificate gets no fill or save offer. An explicitly enrolled or compromised browser can still lie about any website. |
 | A malicious page harvesting a fill | Nothing is filled without you tapping the suggestion; there is no gesture-less path at all on Android, since the framework only asks when a field is focused. |
 | An attacker-controlled subdomain of a site you have an entry for | Parent-domain matching is bounded by the Public Suffix List, and only ever climbs *up* from the visited host — an entry for `login.example.com` is never released to `example.com`. |
 | Phishing domain (`github.com.evil.example`) | Suffix matching at label boundaries bounded by the Public Suffix List — only `evil.example`'s own entries can match. |

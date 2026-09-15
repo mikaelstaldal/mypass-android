@@ -29,7 +29,7 @@ import nu.staldal.pw.data.Matching
  * - **`https:` only**, plus `http://localhost` and `http://127.0.0.1` for
  *   local development.
  * - **Only from a browser.** The `webDomain` in a fill request is whatever the
- *   source app put there, so it counts only from a package in [Browsers].
+ *   source app put there, so it counts only from a certificate-authenticated publisher in [Browsers].
  * - **Origin matching** is [Matching.matchingEntries]: exact host, or a parent
  *   domain at a label boundary, bounded by the Public Suffix List.
  * - **Read-only.** This service never writes the vault; a save request hands
@@ -109,7 +109,8 @@ class PwAutofillService : AutofillService() {
      */
     private fun eligibleHost(structure: AssistStructure, form: ParsedForm): String? {
         val packageName = structure.activityComponent?.packageName
-        if (!Browsers.isTrustedBrowser(packageName, app.extraBrowserPackages)) return null
+        val identity = packageName?.let { BrowserCertificates.read(packageManager, it) }
+        if (!Browsers.isTrustedBrowser(packageName, identity, app.browserCertificatePins)) return null
         return Matching.eligibleWebHost(form.webScheme, form.webDomain)
     }
 

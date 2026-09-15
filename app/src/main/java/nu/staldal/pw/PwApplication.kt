@@ -8,6 +8,8 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
 import nu.staldal.pw.data.PwRepository
 import nu.staldal.pw.data.Settings
 import nu.staldal.pw.data.SettingsState
@@ -32,9 +34,9 @@ class PwApplication : Application() {
      */
     val applicationScope = CoroutineScope(SupervisorJob())
 
-    /** Mirrors [SettingsState.extraBrowserPackages] for the autofill service. */
+    /** Mirrors [SettingsState.browserCertificatePins] for the autofill service. */
     @Volatile
-    var extraBrowserPackages: String = ""
+    var browserCertificatePins: String = ""
         private set
 
     @Volatile
@@ -44,12 +46,15 @@ class PwApplication : Application() {
         super.onCreate()
         repository = PwRepository(filesDir, SystemClock::elapsedRealtime, applicationScope)
         settings = Settings(this)
+        // Autofill can arrive before the collector emits. Load the small local
+        // preference blob before publishing this application to the service.
+        browserCertificatePins = runBlocking { settings.state.first().browserCertificatePins }
 
         applicationScope.launch {
             settings.state.collect { state ->
                 repository.autoLockMinutes = state.autoLockMinutes
                 repository.scryptLogN = state.scryptLogN
-                extraBrowserPackages = state.extraBrowserPackages
+                browserCertificatePins = state.browserCertificatePins
                 lockOnBackground = state.lockOnBackground
                 Clipboard.clearAfterSeconds = state.clipboardClearSeconds
             }

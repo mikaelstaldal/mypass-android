@@ -103,8 +103,9 @@ bearing; do not relax one without saying so in README.md's security table:
   is standing in.
 - `https:` only, plus `http://localhost` and `http://127.0.0.1`. A missing
   scheme is refused, not assumed to be `https:`.
-- A `webDomain` is believed only from a package in `autofill/Browsers.kt` (or
-  the user's extra packages), because Android does not verify it.
+- A `webDomain` is believed only from a package with a pinned signing
+  certificate in `autofill/Browsers.kt` or deliberate user certificate
+  enrollment, because Android does not verify the claimed domain.
 - Web pages only: native app screens are never filled, because an entry's
   association with a site is its `url`, and inventing a second kind would
   change the shared vault format.

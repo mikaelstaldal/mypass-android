@@ -42,10 +42,10 @@ data class SettingsState(
      */
     val scryptLogN: Int = ScryptDefaults.LOG_N,
     /**
-     * Extra browser packages whose reported web domain is trusted, beyond
-     * [nu.staldal.pw.autofill.Browsers.KNOWN]. Comma- or whitespace-separated.
+     * Explicit package/certificate enrollments, stored outside the shared vault.
+     * Legacy package-only settings are intentionally never migrated.
      */
-    val extraBrowserPackages: String = "",
+    val browserCertificatePins: String = "",
 ) {
     companion object {
         const val DEFAULT_AUTO_LOCK_MINUTES = 5
@@ -73,7 +73,7 @@ class Settings(context: Context) {
             passwordLength = prefs[PASSWORD_LENGTH] ?: PasswordGenerator.DEFAULT_LENGTH,
             passwordCharset = prefs[PASSWORD_CHARSET] ?: PasswordGenerator.DEFAULT_CHARSET,
             scryptLogN = prefs[SCRYPT_LOG_N] ?: ScryptDefaults.LOG_N,
-            extraBrowserPackages = prefs[EXTRA_BROWSER_PACKAGES] ?: "",
+            browserCertificatePins = prefs[BROWSER_CERTIFICATE_PINS] ?: "",
         )
     }
 
@@ -92,7 +92,12 @@ class Settings(context: Context) {
     suspend fun setScryptLogN(value: Int) =
         put(SCRYPT_LOG_N, value.coerceIn(ScryptDefaults.MIN_LOG_N, ScryptDefaults.MAX_LOG_N))
 
-    suspend fun setExtraBrowserPackages(value: String) = put(EXTRA_BROWSER_PACKAGES, value)
+    suspend fun setBrowserCertificatePins(value: String) {
+        store.edit {
+            it[BROWSER_CERTIFICATE_PINS] = value
+            it.remove(stringPreferencesKey("extra_browser_packages"))
+        }
+    }
 
     private suspend fun <T> put(key: Preferences.Key<T>, value: T) {
         store.edit { it[key] = value }
@@ -105,6 +110,6 @@ class Settings(context: Context) {
         val PASSWORD_LENGTH = intPreferencesKey("password_length")
         val PASSWORD_CHARSET = stringPreferencesKey("password_charset")
         val SCRYPT_LOG_N = intPreferencesKey("scrypt_log_n")
-        val EXTRA_BROWSER_PACKAGES = stringPreferencesKey("extra_browser_packages")
+        val BROWSER_CERTIFICATE_PINS = stringPreferencesKey("browser_certificate_pins_v1")
     }
 }
