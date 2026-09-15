@@ -6,7 +6,6 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
-import android.view.autofill.AutofillId
 import android.view.autofill.AutofillManager
 import android.view.inputmethod.InlineSuggestionsRequest
 import androidx.activity.compose.setContent
@@ -22,7 +21,6 @@ import androidx.core.content.IntentCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import nu.staldal.pw.PwApplication
-import nu.staldal.pw.data.Matching
 import nu.staldal.pw.data.VaultState
 import nu.staldal.pw.ui.VaultViewModel
 import nu.staldal.pw.ui.screens.UnlockScreen
@@ -40,6 +38,8 @@ import nu.staldal.pw.ui.theme.PwTheme
  */
 class AutofillAuthActivity : FragmentActivity() {
 
+    private var requestToken: String? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.setFlags(
@@ -50,17 +50,27 @@ class AutofillAuthActivity : FragmentActivity() {
         // the browser with no fill rather than an empty one.
         setResult(Activity.RESULT_CANCELED)
 
-        val host = intent.getStringExtra(EXTRA_HOST)
+        val uri = intent.data
+        val token = uri?.takeIf { it.scheme == "pw-autofill-auth" && it.authority == "request" }
+            ?.pathSegments?.singleOrNull()
+        val destination = token?.let { AutofillAuthRequests.store.get(it) }
+        requestToken = token
         val structure: AssistStructure? = IntentCompat.getParcelableExtra(
             intent,
             AutofillManager.EXTRA_ASSIST_STRUCTURE,
             AssistStructure::class.java,
         )
-        if (host == null || structure == null) {
+        if (destination == null || structure == null) {
             finish()
             return
         }
 
+        val form = AutofillStructureParser.parse(structure, destination.focusedId)
+        if (!AutofillAuthRequests.accepts(this, destination, structure, form)) {
+            finish()
+            return
+        }
+        val host = destination.host
         val inline = inlineRequest()
 
         setContent {
@@ -72,7 +82,7 @@ class AutofillAuthActivity : FragmentActivity() {
                     // this screen's own success callback, so a vault unlocked
                     // elsewhere while this was opening answers immediately too.
                     LaunchedEffect(state) {
-                        if (state is VaultState.Unlocked) respond(structure, host, inline)
+                        if (state is VaultState.Unlocked) respond(structure, inline)
                     }
                     UnlockScreen(
                         viewModel = viewModel,
@@ -107,7 +117,7 @@ class AutofillAuthActivity : FragmentActivity() {
         return InlineRequest(specs, request.maxSuggestionCount)
     }
 
-    private fun respond(structure: AssistStructure, host: String, inline: InlineRequest?) {
+    private fun respond(structure: AssistStructure, inline: InlineRequest?) {
         if (isFinishing) return
         val app = application as PwApplication
         val entries = app.repository.entriesOrNull()
@@ -117,22 +127,21 @@ class AutofillAuthActivity : FragmentActivity() {
             finish()
             return
         }
-        val focusedId = IntentCompat.getParcelableExtra(intent, EXTRA_FOCUSED_ID, AutofillId::class.java)
-        val form = AutofillStructureParser.parse(structure, focusedId)
-        if (Matching.eligibleWebHost(form.webScheme, form.webDomain) != host) {
+        val destination = requestToken?.let { AutofillAuthRequests.store.take(it) }
+        if (destination == null) {
             finish()
             return
         }
-        val response = FillResponses.forEntries(this, form, host, entries, inline)
+        val form = AutofillStructureParser.parse(structure, destination.focusedId)
+        if (!AutofillAuthRequests.accepts(this, destination, structure, form)) {
+            finish()
+            return
+        }
+        val response = FillResponses.forEntries(this, form, destination.host, entries, inline)
         setResult(
             Activity.RESULT_OK,
             Intent().putExtra(AutofillManager.EXTRA_AUTHENTICATION_RESULT, response),
         )
         finish()
-    }
-
-    companion object {
-        const val EXTRA_FOCUSED_ID = "nu.staldal.pw.autofill.FOCUSED_ID"
-        const val EXTRA_HOST = "nu.staldal.pw.autofill.HOST"
     }
 }

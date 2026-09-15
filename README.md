@@ -180,6 +180,18 @@ asked for it. Nothing about the vault is revealed by the offer: pw cannot tell
 whether it has an entry for a site until it is open, so the offer necessarily
 comes before that is known.
 
+Each unlock offer is bound to its approved browser package, normalized host,
+username/password field IDs and original focus in a process-local
+request whose authority is consumed once at credential release. Before prompting and again before releasing a dataset, pw rechecks
+browser publisher trust and the password field's eligible origin against that
+request. Changed destinations are refused. Requests expire after five minutes;
+process death also invalidates them. Cancelling a fill computation before its
+offer is published withdraws the request; backing out of the unlock screen
+allows a retry within the expiry window. This validates the
+framework-supplied snapshot, not browser navigation that the framework does not
+report. No ordinary-app exploitation of the authentication PendingIntent has
+been demonstrated on a device.
+
 ### Which browsers
 
 **Migration notice:** Brave, Edge, Vivaldi, Opera, DuckDuckGo, Tor, and Firefox

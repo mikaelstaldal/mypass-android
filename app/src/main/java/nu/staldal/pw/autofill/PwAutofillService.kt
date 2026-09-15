@@ -65,16 +65,35 @@ class PwAutofillService : AutofillService() {
             return
         }
 
+        if (cancellationSignal.isCanceled) {
+            callback.onSuccess(null)
+            return
+        }
+        var authToken: String? = null
         val inline = InlineRequest.from(request)
         val entries = app.repository.entriesOrNull()
         val response = when {
             entries != null -> FillResponses.forEntries(this, form, host, entries, inline)
             // No vault yet: offer nothing rather than an unlock prompt for a
             // vault that does not exist.
-            app.repository.vaultExists() -> FillResponses.locked(this, form, host, inline, focusedId)
+            app.repository.vaultExists() -> {
+                // eligibleHost and the passwordId check above established these.
+                val token = AutofillAuthRequests.store.register(AuthDestination(
+                    requireNotNull(structure.activityComponent).packageName, host, form.usernameId,
+                    requireNotNull(form.passwordId), focusedId))
+                authToken = token
+                FillResponses.locked(this, form, host, inline, token)
+            }
             else -> null
         }
-        callback.onSuccess(response)
+        // The signal belongs to the fill computation, not to the lifetime
+        // of a published offer or its authentication activity.
+        if (cancellationSignal.isCanceled) {
+            authToken?.let { AutofillAuthRequests.store.cancel(it) }
+            callback.onSuccess(null)
+        } else {
+            callback.onSuccess(response)
+        }
     }
 
     override fun onSaveRequest(request: SaveRequest, callback: SaveCallback) {
@@ -104,7 +123,7 @@ class PwAutofillService : AutofillService() {
             this,
             REQUEST_CODE_SAVE,
             intent,
-            PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_MUTABLE,
+            PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         callback.onSuccess(pendingIntent.intentSender)
     }

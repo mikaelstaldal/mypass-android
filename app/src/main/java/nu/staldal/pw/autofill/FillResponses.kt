@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.service.autofill.Dataset
 import android.service.autofill.FillResponse
@@ -87,21 +88,24 @@ object FillResponses {
         form: ParsedForm,
         host: String,
         inline: InlineRequest?,
-        focusedId: AutofillId? = null,
+        token: String,
     ): FillResponse {
         val title = context.getString(R.string.autofill_unlock_title)
         val subtitle = context.getString(R.string.autofill_unlock_subtitle, host)
         val intent = Intent(context, AutofillAuthActivity::class.java)
-            .putExtra(AutofillAuthActivity.EXTRA_HOST, host)
-            .putExtra(AutofillAuthActivity.EXTRA_FOCUSED_ID, focusedId)
-        val authPendingIntent = pendingIntent(context, intent, REQUEST_CODE_AUTH)
+            .setData(Uri.Builder().scheme("pw-autofill-auth").authority("request").appendPath(token).build())
+        val authPendingIntent = PendingIntent.getActivity(context, REQUEST_CODE_AUTH, intent,
+            PendingIntent.FLAG_MUTABLE)
+        // The URI makes this intent unique. Launches may be retried; only
+        // credential release consumes the process-local request.
 
         val builder = FillResponse.Builder()
         val ids = form.autofillIds
         val presentation = remoteViews(context, title, subtitle)
         val inlinePresentation =
             if (inline != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                inlinePresentation(inline, 0, title, subtitle, authPendingIntent)
+                // Attribution reaches the IME: never give it the mutable auth intent.
+                inlinePresentation(inline, 0, title, subtitle, attributionIntent(context))
             } else {
                 null
             }
@@ -141,11 +145,7 @@ object FillResponses {
                     // The framework requires an attribution intent on every
                     // inline suggestion. Opening pw itself is the honest
                     // answer to "where does this suggestion come from?".
-                    pendingIntent = pendingIntent(
-                        context,
-                        Intent(context, MainActivity::class.java),
-                        REQUEST_CODE_ATTRIBUTION,
-                    ),
+                    pendingIntent = attributionIntent(context),
                 )
             } else {
                 null
@@ -212,14 +212,12 @@ object FillResponses {
         return InlinePresentation(content.slice, spec, false)
     }
 
-    private fun pendingIntent(context: Context, intent: Intent, requestCode: Int): PendingIntent =
+    private fun attributionIntent(context: Context): PendingIntent =
         PendingIntent.getActivity(
             context,
-            requestCode,
-            intent,
-            // MUTABLE because the framework fills the launched intent in with
-            // the request extras the authentication activity needs.
-            PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_MUTABLE,
+            REQUEST_CODE_ATTRIBUTION,
+            Intent(context, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
     private const val REQUEST_CODE_AUTH = 1
