@@ -16,9 +16,9 @@ sealed class PwException(message: String, cause: Throwable? = null) : Exception(
 
     class WrongPassphrase : PwException("incorrect passphrase")
 
-    class NotFound(val name: String) : PwException("no entry '$name' in the vault")
+    class NotFound(val name: String) : PwException("no entry '${Validation.displayText(name)}' in the vault")
 
-    class AlreadyExists(val name: String) : PwException("an entry named '$name' already exists")
+    class AlreadyExists(val name: String) : PwException("an entry named '${Validation.displayText(name)}' already exists")
 
     class InvalidInput(val what: String, val reason: String) :
         PwException("invalid $what: $reason")

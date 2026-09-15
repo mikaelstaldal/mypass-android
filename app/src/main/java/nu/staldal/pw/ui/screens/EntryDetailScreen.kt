@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import nu.staldal.pw.data.Validation
 import nu.staldal.pw.vault.PasswordEntry
 
 /**
@@ -56,7 +57,7 @@ fun EntryDetailScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(entry.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(Validation.displayText(entry.name), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -81,7 +82,7 @@ fun EntryDetailScreen(
                 .padding(16.dp)
         ) {
             if (entry.username.isNotEmpty()) {
-                Field("Username", entry.username)
+                Field("Username", Validation.displayText(entry.username))
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = {
@@ -110,7 +111,7 @@ fun EntryDetailScreen(
 
             if (entry.url != null) {
                 Spacer(Modifier.height(24.dp))
-                Field("Site (url)", entry.url)
+                Field("Site (url)", Validation.displayText(entry.url))
                 Text(
                     "This entry can be filled in a browser on this site.",
                     style = MaterialTheme.typography.bodySmall,
@@ -126,7 +127,7 @@ fun EntryDetailScreen(
 
             if (entry.realm != null) {
                 Spacer(Modifier.height(24.dp))
-                Field("HTTP realm", entry.realm)
+                Field("HTTP realm", Validation.displayText(entry.realm))
                 Text(
                     "Used by desktop pw's browser integration; Android's " +
                         "autofill never sees an HTTP authentication challenge.",
@@ -139,7 +140,7 @@ fun EntryDetailScreen(
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("Remove “${entry.name}”?") },
+            title = { Text("Remove “${Validation.displayText(entry.name)}”?") },
             text = { Text("The password is deleted from the vault. This cannot be undone.") },
             confirmButton = {
                 TextButton(onClick = { confirmDelete = false; onDelete() }) { Text("Remove") }

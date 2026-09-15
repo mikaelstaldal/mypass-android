@@ -59,6 +59,26 @@ imported vault under the imported passphrase before the primary is replaced.
 The previous local entries are discarded; export them before importing if you
 need to keep them. An interrupted import leaves a complete primary recoverable.
 
+Imported and existing vaults must have unique entry names and obey the same
+metadata rules as desktop `pw` entry creation: at most 256 Unicode code points,
+no control, bidirectional-control or zero-width characters, nonempty names and
+present site hints, and a URL whenever a realm is present. Legacy vaults with
+incompatible metadata are rejected with field-only errors before import changes
+the local vault or backup; correct the source metadata and re-export to migrate.
+Existing incompatible vaults are also refused on unlock. The lock screen offers
+**Export encrypted vault** without unlocking, and **Import a replacement vault**
+for the corrected copy. These recovery actions appear only in the main app,
+never in autofill dialogs. They do not require the current master passphrase:
+someone with access to the unlocked phone can export ciphertext for offline
+passphrase guessing or replace both the vault and backup with their own vault.
+Replacement requires an explicit confirmation before picking the incoming file.
+Export first, repair the indicated entry metadata using
+desktop `pw`, then import the corrected vault. Bare-array legacy vaults remain
+decodable but must pass these metadata checks.
+No entries are silently discarded. Presentation labels replace spoofing/control
+characters and bound text length defensively. Passwords are never sanitized.
+The scrypt v0 format, version-1 envelope and legacy array decoding are unchanged.
+
 Changing the master passphrase similarly replaces both the primary and local
 backup with snapshots encrypted under the new passphrase. The backup is committed
 first, then the primary; each rename is followed by a directory fsync. An

@@ -93,6 +93,36 @@ object Validation {
         validateSite(entry.url, entry.realm)
     }
 
+    /** Reject incompatible legacy metadata without echoing any producer-controlled text. */
+    fun validateEntries(entries: List<PasswordEntry>) {
+        val names = HashSet<String>()
+        for ((index, entry) in entries.withIndex()) {
+            try {
+                validateEntry(entry)
+            } catch (e: PwException.InvalidInput) {
+                throw PwException.InvalidInput("vault entry ${index + 1} of ${entries.size} (${e.what})",
+                    "${e.reason}; export the encrypted vault and correct its metadata in desktop pw before importing")
+            }
+            if (!names.add(entry.name)) {
+                throw PwException.InvalidInput("vault", "duplicate entry name at entry ${index + 1} of ${entries.size}; export the encrypted vault and rename entries in desktop pw before importing")
+            }
+        }
+    }
+
+    /** Presentation only: never use for stored values, matching, or passwords. */
+    fun displayText(value: String): String = buildString {
+        var offset = 0
+        var count = 0
+        while (offset < value.length && count < MAX_NAME_LEN) {
+            val cp = value.codePointAt(offset)
+            if (Character.isISOControl(cp) || isDisplaySpoofingChar(cp)) append('\uFFFD')
+            else appendCodePoint(cp)
+            offset += Character.charCount(cp)
+            count++
+        }
+        if (offset < value.length) append('…')
+    }
+
     private fun validateText(what: String, value: String) {
         if (value.codePointCount(0, value.length) > MAX_NAME_LEN) {
             throw PwException.InvalidInput(what, "longer than $MAX_NAME_LEN characters")

@@ -36,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import nu.staldal.pw.data.Validation
 import nu.staldal.pw.vault.PasswordEntry
 
 /** The open vault: every entry, filtered by a case-insensitive substring. */
@@ -133,7 +134,7 @@ private fun EntryRow(entry: PasswordEntry, onClick: () -> Unit) {
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         Text(
-            entry.name,
+            Validation.displayText(entry.name),
             style = MaterialTheme.typography.titleMedium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -146,7 +147,7 @@ private fun EntryRow(entry: PasswordEntry, onClick: () -> Unit) {
         ).joinToString(" · ")
         if (detail.isNotEmpty()) {
             Text(
-                detail,
+                Validation.displayText(detail),
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

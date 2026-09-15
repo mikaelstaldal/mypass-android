@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -48,6 +49,7 @@ fun UnlockScreen(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     compact: Boolean = false,
+    allowRecovery: Boolean = false,
 ) {
     val context = LocalContext.current
     val activity = context as? FragmentActivity
@@ -57,6 +59,7 @@ fun UnlockScreen(
     // Whether a vault file exists decides the whole screen, and it changes
     // only when this screen creates or imports one.
     var hasVault by remember { mutableStateOf(viewModel.vaultExists()) }
+    var confirmReplacement by remember { mutableStateOf(false) }
     var importing by remember { mutableStateOf(false) }
     var importUri by remember { mutableStateOf<android.net.Uri?>(null) }
 
@@ -68,6 +71,34 @@ fun UnlockScreen(
             importing = true
             passphrase = ""
         }
+    }
+
+    // Ciphertext export needs no unlock, including when legacy metadata is rejected.
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri ->
+        if (uri != null) {
+            val out = context.contentResolver.openOutputStream(uri)
+            if (out == null) viewModel.show("Could not write to the file you picked.")
+            else viewModel.exportVault(out) { viewModel.show("Encrypted vault exported.") }
+        }
+    }
+
+    if (confirmReplacement && allowRecovery) {
+        AlertDialog(
+            onDismissRequest = { confirmReplacement = false },
+            title = { Text("Replace the local vault and backup?") },
+            text = { Text("The incoming vault will replace all local entries and the backup. Export the encrypted vault first to keep a recoverable copy.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmReplacement = false
+                    importLauncher.launch(arrayOf("*/*"))
+                }) { Text("Choose replacement vault") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmReplacement = false }) { Text("Cancel") }
+            },
+        )
     }
 
     // Offer the fingerprint straight away when it is set up: it is the whole
@@ -224,6 +255,22 @@ fun UnlockScreen(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text("Unlock with fingerprint")
+                }
+            }
+
+            if (hasVault && !importing && allowRecovery) {
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = { exportLauncher.launch("pw.scrypt") }) {
+                    Text("Export encrypted vault")
+                }
+                TextButton(onClick = { confirmReplacement = true }) {
+                    Text("Import a replacement vault")
+                }
+            }
+            if (hasVault && importing) {
+                Text("Import replaces the local entries. Export the encrypted vault first if you need to keep them.")
+                TextButton(onClick = { importing = false; importUri = null }) {
+                    Text("Cancel import")
                 }
             }
 

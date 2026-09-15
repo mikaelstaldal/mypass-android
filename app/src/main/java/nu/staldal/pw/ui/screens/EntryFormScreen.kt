@@ -51,6 +51,7 @@ fun EntryFormScreen(
     onGenerate: (Int, String) -> Secret?,
 ) {
     val editing = existing != null
+    // Editable metadata retains its stored value; loaded entries have passed validation.
     var name by remember { mutableStateOf(existing?.name.orEmpty()) }
     var username by remember { mutableStateOf(existing?.username.orEmpty()) }
     var url by remember { mutableStateOf(existing?.url.orEmpty()) }

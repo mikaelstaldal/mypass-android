@@ -168,7 +168,7 @@ class PwRepository(
         if (!file.exists()) throw PwException.NoVault(file)
         openAfter(Passphrase(enteredPassphrase)) { pass ->
             try {
-                withContext(ioDispatcher) { Vault.load(file, pass) }
+                withContext(ioDispatcher) { Vault.load(file, pass).also(Validation::validateEntries) }
             } catch (e: VaultException) {
                 throw mapVaultException(file, e)
             }
@@ -269,6 +269,7 @@ class PwRepository(
             } catch (e: VaultException) {
                 throw mapVaultException(vaultFile, e)
             }
+            Validation.validateEntries(entries)
             vaultDir.mkdirs()
             // Re-encrypt rather than copying the bytes, so the vault on this
             // device always uses this device's configured KDF cost.

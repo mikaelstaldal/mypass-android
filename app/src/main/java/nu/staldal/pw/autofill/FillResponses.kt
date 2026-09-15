@@ -17,6 +17,7 @@ import androidx.autofill.inline.UiVersions
 import androidx.autofill.inline.v1.InlineSuggestionUi
 import nu.staldal.pw.MainActivity
 import nu.staldal.pw.R
+import nu.staldal.pw.data.Validation
 import nu.staldal.pw.data.Matching
 import nu.staldal.pw.vault.PasswordEntry
 
@@ -181,8 +182,8 @@ object FillResponses {
 
     fun remoteViews(context: Context, title: String, subtitle: String): RemoteViews =
         RemoteViews(context.packageName, R.layout.autofill_dataset).apply {
-            setTextViewText(R.id.autofill_dataset_title, title)
-            setTextViewText(R.id.autofill_dataset_subtitle, subtitle)
+            setTextViewText(R.id.autofill_dataset_title, Validation.displayText(title))
+            setTextViewText(R.id.autofill_dataset_subtitle, Validation.displayText(subtitle))
         }
 
     // InlineSuggestionUi builds the Slice the platform wants, but the accessor
@@ -202,8 +203,8 @@ object FillResponses {
             return null
         }
         val content = InlineSuggestionUi.newContentBuilder(pendingIntent)
-            .setTitle(title)
-            .setSubtitle(subtitle)
+            .setTitle(Validation.displayText(title))
+            .setSubtitle(Validation.displayText(subtitle))
             .build()
         return InlinePresentation(content.slice, spec, false)
     }

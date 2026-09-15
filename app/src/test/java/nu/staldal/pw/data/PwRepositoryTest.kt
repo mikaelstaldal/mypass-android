@@ -322,6 +322,70 @@ class PwRepositoryTest {
         assertNull(repository.entriesOrNull())
     }
 
+    @Test
+    fun incompatibleEncryptedMetadataCannotReplaceOrOpenVault() = runTest {
+        val repository = repository()
+        repository.createVault(passphrase)
+        repository.add(entry("local"))
+        val primary = repository.vaultFile.readBytes()
+        val backup = Vault.backupFile(repository.vaultFile).readBytes()
+        val invalid = listOf(
+            listOf(entry("duplicate"), entry("duplicate")),
+            listOf(entry("bad\u202Ename")),
+            listOf(entry("bad\u0000name")),
+            listOf(entry("bad\u200Bname")),
+            listOf(entry("x".repeat(257))),
+            listOf(entry("valid").copy(username = "bad\u2066user")),
+            listOf(entry("valid").copy(url = "x".repeat(257))),
+            listOf(entry("valid").copy(realm = "realm")),
+        )
+        for (entries in invalid) {
+            val foreign = temp.newFile()
+            Passphrase("incoming").use {
+                Vault.store(foreign, it, entries, ScryptFormat.Params(logN = 12, r = 8, p = 1))
+            }
+            foreign.inputStream().use {
+                assertFailsWith(PwException.InvalidInput::class.java) { repository.importVault(it, "incoming") }
+            }
+            assertArrayEquals(primary, repository.vaultFile.readBytes())
+            assertArrayEquals(backup, Vault.backupFile(repository.vaultFile).readBytes())
+            assertEquals(listOf(entry("local")), repository.entries())
+            val other = repository(temp.newFolder())
+            foreign.copyTo(other.vaultFile)
+            assertFailsWith(PwException.InvalidInput::class.java) { other.unlock("incoming") }
+            assertFalse(other.state.value is VaultState.Unlocked)
+            val recovered = ByteArrayOutputStream()
+            other.copyVaultTo(recovered)
+            assertArrayEquals(foreign.readBytes(), recovered.toByteArray())
+        }
+        repository.lock()
+    }
+
+    @Test
+    fun validLegacyArrayStillUnlocks() = runTest {
+        val repository = repository()
+        val plaintext = """[{"name":"legacy","username":"user","password":"secret"}]""".toByteArray()
+        Passphrase(passphrase).use {
+            repository.vaultFile.writeBytes(ScryptFormat.encrypt(plaintext, it.expose(), ScryptFormat.Params(logN = 12, r = 8, p = 1)))
+        }
+        repository.unlock(passphrase)
+        assertEquals("secret", repository.get("legacy").password.expose())
+        repository.lock()
+    }
+
+    @Test
+    fun metadataValidationNeverChangesPasswordBytes() = runTest {
+        val repository = repository()
+        val foreign = temp.newFile()
+        val password = "\u202E\u0000\u200B" + "x".repeat(300)
+        Passphrase(passphrase).use {
+            Vault.store(foreign, it, listOf(entry("valid", password)), ScryptFormat.Params(logN = 12, r = 8, p = 1))
+        }
+        foreign.inputStream().use { repository.importVault(it, passphrase) }
+        assertEquals(password, repository.get("valid").password.expose())
+        repository.lock()
+    }
+
     // --- import and export ----------------------------------------------
 
     @Test

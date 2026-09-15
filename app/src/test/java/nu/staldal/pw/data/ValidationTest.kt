@@ -7,6 +7,30 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class ValidationTest {
+    @Test
+    fun displayReplacesSpoofingCharactersAndBoundsUntrustedText() {
+        assertEquals("a�b�c�d", Validation.displayText("a\u202Eb\u0000c\u200Bd"))
+        assertEquals("a��", Validation.displayText("a\uFEFF\u2060"))
+        assertEquals("😀".repeat(256), Validation.displayText("😀".repeat(256)))
+        assertEquals("😀".repeat(256) + "…", Validation.displayText("😀".repeat(257)))
+        assertEquals("x".repeat(256), Validation.displayText("x".repeat(256)))
+        assertEquals("😀", Validation.displayText("😀"))
+        assertEquals("x".repeat(256) + "…", Validation.displayText("x".repeat(257)))
+        assertEquals("invalid entry name: contains control characters",
+            PwException.InvalidInput("entry name", "contains control characters").message)
+        assertEquals("no entry 'bad�name' in the vault", PwException.NotFound("bad\u202Ename").message)
+    }
+
+    @Test
+    fun vaultErrorsUseSafePositionsInsteadOfUntrustedMetadata() {
+        val bad = PasswordEntry("bad\u202Ename", "user", Secret("secret"))
+        val error = assertThrows(PwException.InvalidInput::class.java) {
+            Validation.validateEntries(listOf(bad))
+        }
+        org.junit.Assert.assertTrue(error.message!!.contains("entry 1 of 1"))
+        org.junit.Assert.assertFalse(error.message!!.contains(bad.name))
+        org.junit.Assert.assertFalse(error.message!!.contains("secret"))
+    }
 
     @Test
     fun acceptsOrdinaryNames() {

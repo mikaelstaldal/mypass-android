@@ -83,6 +83,7 @@ fun PwApp() {
             composable(Routes.UNLOCK) {
                 UnlockScreen(
                     viewModel = vaultViewModel,
+                    allowRecovery = true,
                     onUnlocked = {
                         navController.navigate(Routes.LIST) {
                             popUpTo(Routes.UNLOCK) { inclusive = true }

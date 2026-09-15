@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
+import nu.staldal.pw.data.Validation
 import nu.staldal.pw.data.Matching
 import nu.staldal.pw.data.VaultState
 import nu.staldal.pw.ui.VaultViewModel
@@ -132,14 +133,14 @@ private fun SaveDialog(
             Column {
                 Text(
                     if (match == null) {
-                        "A new entry for $host, fillable there from now on."
+                        "A new entry for ${Validation.displayText(host)}, fillable there from now on."
                     } else {
-                        "Replace the password of “${match.name}” for $host."
+                        "Replace the password of “${Validation.displayText(match.name)}” for ${Validation.displayText(host)}."
                     }
                 )
                 Spacer(Modifier.height(12.dp))
                 OutlinedTextField(
-                    value = name,
+                    value = if (match == null) name else Validation.displayText(name),
                     onValueChange = { name = it },
                     label = { Text("Name") },
                     singleLine = true,
@@ -151,7 +152,7 @@ private fun SaveDialog(
                     if (username.isEmpty()) {
                         "No username was filled in."
                     } else {
-                        "Username: $username"
+                        "Username: ${Validation.displayText(username)}"
                     }
                 )
             }
