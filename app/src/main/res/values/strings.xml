@@ -5,4 +5,5 @@
     <string name="autofill_service_label">pw</string>
     <string name="autofill_unlock_title">Unlock pw</string>
     <string name="autofill_unlock_subtitle">Sign in to %1$s</string>
+    <string name="autofill_save_unavailable">Unable to identify a safe login form to save. Open pw to add the login.</string>
 </resources>

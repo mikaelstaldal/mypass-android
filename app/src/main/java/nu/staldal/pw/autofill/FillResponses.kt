@@ -50,6 +50,7 @@ object FillResponses {
         entries: List<PasswordEntry>,
         inline: InlineRequest?,
     ): FillResponse? {
+        if (form.passwordId == null) return null
         val matches = Matching.matchingEntries(host, entries)
         if (matches.isEmpty()) return null
 
@@ -86,11 +87,13 @@ object FillResponses {
         form: ParsedForm,
         host: String,
         inline: InlineRequest?,
+        focusedId: AutofillId? = null,
     ): FillResponse {
         val title = context.getString(R.string.autofill_unlock_title)
         val subtitle = context.getString(R.string.autofill_unlock_subtitle, host)
         val intent = Intent(context, AutofillAuthActivity::class.java)
             .putExtra(AutofillAuthActivity.EXTRA_HOST, host)
+            .putExtra(AutofillAuthActivity.EXTRA_FOCUSED_ID, focusedId)
         val authPendingIntent = pendingIntent(context, intent, REQUEST_CODE_AUTH)
 
         val builder = FillResponse.Builder()

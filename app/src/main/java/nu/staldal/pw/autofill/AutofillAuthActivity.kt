@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
+import android.view.autofill.AutofillId
 import android.view.autofill.AutofillManager
 import android.view.inputmethod.InlineSuggestionsRequest
 import androidx.activity.compose.setContent
@@ -21,6 +22,7 @@ import androidx.core.content.IntentCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import nu.staldal.pw.PwApplication
+import nu.staldal.pw.data.Matching
 import nu.staldal.pw.data.VaultState
 import nu.staldal.pw.ui.VaultViewModel
 import nu.staldal.pw.ui.screens.UnlockScreen
@@ -115,7 +117,12 @@ class AutofillAuthActivity : FragmentActivity() {
             finish()
             return
         }
-        val form = AutofillStructureParser.parse(structure)
+        val focusedId = IntentCompat.getParcelableExtra(intent, EXTRA_FOCUSED_ID, AutofillId::class.java)
+        val form = AutofillStructureParser.parse(structure, focusedId)
+        if (Matching.eligibleWebHost(form.webScheme, form.webDomain) != host) {
+            finish()
+            return
+        }
         val response = FillResponses.forEntries(this, form, host, entries, inline)
         setResult(
             Activity.RESULT_OK,
@@ -125,6 +132,7 @@ class AutofillAuthActivity : FragmentActivity() {
     }
 
     companion object {
+        const val EXTRA_FOCUSED_ID = "nu.staldal.pw.autofill.FOCUSED_ID"
         const val EXTRA_HOST = "nu.staldal.pw.autofill.HOST"
     }
 }

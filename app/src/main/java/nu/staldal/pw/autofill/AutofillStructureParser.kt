@@ -35,12 +35,12 @@ data class ParsedForm(
  */
 object AutofillStructureParser {
 
-    fun parse(structure: AssistStructure): ParsedForm {
+    fun parse(structure: AssistStructure, focusedId: AutofillId? = null): ParsedForm {
         val candidates = mutableListOf<FieldCandidate<AutofillId>>()
         for (i in 0 until structure.windowNodeCount) {
-            visit(structure.getWindowNodeAt(i).rootViewNode, null, null, candidates)
+            visit(structure.getWindowNodeAt(i).rootViewNode, FormContext(), null, candidates)
         }
-        val selected = FormSelector.select(candidates)
+        val selected = FormSelector.select(candidates, focusedId)
         return ParsedForm(
             usernameId = selected.usernameId,
             passwordId = selected.passwordId,
@@ -53,12 +53,13 @@ object AutofillStructureParser {
 
     private fun visit(
         node: AssistStructure.ViewNode,
-        inheritedScheme: String?,
-        inheritedDomain: String?,
+        inherited: FormContext,
+        parent: Any?,
         out: MutableList<FieldCandidate<AutofillId>>,
     ) {
-        val scheme = node.webScheme?.takeIf { it.isNotEmpty() } ?: inheritedScheme
-        val domain = node.webDomain?.takeIf { it.isNotEmpty() } ?: inheritedDomain
+        // A new document/frame cannot inherit an outer form's identity.
+        val context = inherited.descend(node, parent, node.webScheme, node.webDomain,
+            node.htmlInfo?.tag.equals("form", ignoreCase = true))
 
         val id = node.autofillId
         if (id != null && node.autofillType == View.AUTOFILL_TYPE_TEXT) {
@@ -66,16 +67,17 @@ object AutofillStructureParser {
                 out += FieldCandidate(
                     kind = kind,
                     id = id,
-                    scheme = scheme,
-                    domain = domain,
+                    scheme = context.origin.scheme,
+                    domain = context.origin.domain,
                     value = currentValue(node),
                     focused = node.isFocused,
+                    container = context.container,
                 )
             }
         }
 
         for (i in 0 until node.childCount) {
-            visit(node.getChildAt(i), scheme, domain, out)
+            visit(node.getChildAt(i), context, node, out)
         }
     }
 

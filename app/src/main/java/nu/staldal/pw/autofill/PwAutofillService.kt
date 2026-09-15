@@ -3,7 +3,9 @@ package nu.staldal.pw.autofill
 import android.app.assist.AssistStructure
 import android.app.PendingIntent
 import android.content.Intent
+import android.os.Build
 import android.os.CancellationSignal
+import nu.staldal.pw.R
 import android.service.autofill.AutofillService
 import android.service.autofill.FillCallback
 import android.service.autofill.FillRequest
@@ -44,12 +46,14 @@ class PwAutofillService : AutofillService() {
         cancellationSignal: CancellationSignal,
         callback: FillCallback,
     ) {
-        val structure = request.fillContexts.lastOrNull()?.structure
+        val context = request.fillContexts.lastOrNull()
+        val structure = context?.structure
         if (structure == null) {
             callback.onSuccess(null)
             return
         }
-        val form = AutofillStructureParser.parse(structure)
+        val focusedId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) context.focusedId else null
+        val form = AutofillStructureParser.parse(structure, focusedId)
         if (form.passwordId == null) {
             // Nothing to fill a password into: not a login form.
             callback.onSuccess(null)
@@ -67,23 +71,25 @@ class PwAutofillService : AutofillService() {
             entries != null -> FillResponses.forEntries(this, form, host, entries, inline)
             // No vault yet: offer nothing rather than an unlock prompt for a
             // vault that does not exist.
-            app.repository.vaultExists() -> FillResponses.locked(this, form, host, inline)
+            app.repository.vaultExists() -> FillResponses.locked(this, form, host, inline, focusedId)
             else -> null
         }
         callback.onSuccess(response)
     }
 
     override fun onSaveRequest(request: SaveRequest, callback: SaveCallback) {
-        val structure = request.fillContexts.lastOrNull()?.structure
+        val context = request.fillContexts.lastOrNull()
+        val structure = context?.structure
         if (structure == null) {
-            callback.onSuccess()
+            callback.onFailure(getString(R.string.autofill_save_unavailable))
             return
         }
-        val form = AutofillStructureParser.parse(structure)
+        val focusedId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) context.focusedId else null
+        val form = AutofillStructureParser.parse(structure, focusedId)
         val host = eligibleHost(structure, form)
         val password = form.passwordValue
         if (host == null || password.isNullOrEmpty() || !app.repository.vaultExists()) {
-            callback.onSuccess()
+            callback.onFailure(getString(R.string.autofill_save_unavailable))
             return
         }
 
