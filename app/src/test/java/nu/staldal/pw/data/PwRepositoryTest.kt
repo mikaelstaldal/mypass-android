@@ -67,6 +67,125 @@ class PwRepositoryTest {
             onReplacementCommitted,
         ).also { it.scryptLogN = 12 }
 
+    @Test
+    fun biometricEnrollmentRejectsTypoAndStaleSession() = runTest {
+        val repo = repository().also { it.autoLockMinutes = 0 }
+        repo.createVault(passphrase)
+        assertFailsWith(PwException.WrongPassphrase::class.java) { repo.verifyBiometricEnrollment("typo") }
+        val token = repo.verifyBiometricEnrollment(passphrase)
+        repo.lock()
+        repo.unlock(passphrase)
+        assertFailsWith(PwException.Locked::class.java) {
+            repo.completeBiometricEnrollment(token, {}) { error("must not persist") }
+        }
+        repo.lock()
+    }
+
+    @Test
+    fun biometricEnrollmentRejectsReplacementAndReportsPersistenceFailure() = runTest {
+        val repo = repository().also { it.autoLockMinutes = 0 }
+        repo.createVault(passphrase)
+        val stale = repo.verifyBiometricEnrollment(passphrase)
+        repo.changePassphrase("new passphrase")
+        assertFailsWith(PwException.Locked::class.java) {
+            repo.completeBiometricEnrollment(stale, {}) { error("must not persist") }
+        }
+        val token = repo.verifyBiometricEnrollment("new passphrase")
+        assertFalse(repo.completeBiometricEnrollment(token, {}) { false })
+        assertFailsWith(PwException.Locked::class.java) {
+            repo.completeBiometricEnrollment(token, {}) { error("single use") }
+        }
+        repo.lock()
+    }
+
+    @Test
+    fun lockAndCancellationDuringEnrollmentVerificationWin() = runTest {
+        val repo = repository().also { it.autoLockMinutes = 0 }
+        repo.createVault(passphrase)
+        val verification = launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            assertFailsWith(PwException.Locked::class.java) { repo.verifyBiometricEnrollment(passphrase) }
+        }
+        repo.lock()
+        verification.join()
+        repo.unlock(passphrase)
+        var completed = false
+        val cancelled = launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            repo.verifyBiometricEnrollment(passphrase)
+            completed = true
+        }
+        cancelled.cancel()
+        cancelled.join()
+        assertFalse(completed)
+        repo.lock()
+    }
+
+    @Test
+    fun queuedEnrollmentCannotAdoptALaterUnlockedSession() = runTest {
+        val repo = repository().also { it.autoLockMinutes = 0 }
+        repo.createVault(passphrase)
+        val writer = launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            repo.add(entry("one"))
+        }
+        // Queue an unlock ahead of enrollment while the writer holds the mutex.
+        val unlock = launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            repo.unlock(passphrase)
+        }
+        val verification = launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            assertFailsWith(PwException.Locked::class.java) { repo.verifyBiometricEnrollment(passphrase) }
+        }
+        repo.lock()
+        writer.join()
+        unlock.join()
+        verification.join()
+        repo.lock()
+    }
+
+    @Test
+    fun enrollmentRefreshesActivityAndDiscardsALockDuringPersistence() = runTest {
+        val repo = repository().also { it.autoLockMinutes = 1 }
+        repo.createVault(passphrase)
+        advanceTimeBy(50_000)
+        val token = repo.verifyBiometricEnrollment(passphrase)
+        advanceTimeBy(20_000)
+        assertTrue(repo.completeBiometricEnrollment(token, {}) { true })
+        advanceTimeBy(50_000)
+        val next = repo.verifyBiometricEnrollment(passphrase)
+        var discarded = false
+        assertFailsWith(PwException.Locked::class.java) {
+            repo.completeBiometricEnrollment(next, { discarded = true }) {
+                // A separate thread must be able to lock while persistence runs.
+                val locker = Thread { repo.lock() }
+                locker.start()
+                locker.join(2_000)
+                assertFalse(locker.isAlive)
+                true
+            }
+        }
+        assertTrue(discarded)
+        repo.lock()
+    }
+
+    @Test
+    fun cancellationAfterEnrollmentPersistenceDiscardsStorage() = runTest {
+        val repo = repository().also { it.autoLockMinutes = 0 }
+        repo.createVault(passphrase)
+        val token = repo.verifyBiometricEnrollment(passphrase)
+        lateinit var operation: kotlinx.coroutines.Job
+        var discarded = false
+        var completed = false
+        operation = launch {
+            repo.completeBiometricEnrollment(token, { discarded = true }) {
+                operation.cancel()
+                true
+            }
+            completed = true
+        }
+        operation.join()
+        assertTrue(discarded)
+        assertFalse(completed)
+        repo.lock()
+    }
+
     private fun entry(name: String, password: String = "pw-$name", url: String? = null) =
         PasswordEntry(name, "$name-user", Secret(password), url = url)
 

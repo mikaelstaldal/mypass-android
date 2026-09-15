@@ -68,6 +68,24 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
     fun unlock(passphrase: String, onSuccess: () -> Unit) =
         run(onSuccess) { repository.unlock(passphrase) }
 
+    fun verifyBiometricEnrollment(passphrase: String, onVerified: (PwRepository.Enrollment) -> Unit) =
+        run({}) { onVerified(repository.verifyBiometricEnrollment(passphrase)) }
+
+    fun completeBiometricEnrollment(
+        token: PwRepository.Enrollment,
+        store: () -> Boolean,
+        onSuccess: () -> Unit,
+    ) {
+        if (_busy.value) {
+            show("The vault is busy; try enabling fingerprint unlock again.")
+            return
+        }
+        run({}) {
+            if (repository.completeBiometricEnrollment(token, biometrics::clear, store)) onSuccess()
+            else show("Could not store the passphrase.")
+        }
+    }
+
     fun add(entry: PasswordEntry, onSuccess: () -> Unit) =
         run(onSuccess) { repository.add(entry) }
 

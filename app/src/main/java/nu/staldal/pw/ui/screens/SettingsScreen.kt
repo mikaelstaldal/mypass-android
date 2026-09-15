@@ -303,26 +303,29 @@ fun SettingsScreen(
             onDismiss = { enrollPassphrase = null },
             onConfirm = { passphrase ->
                 enrollPassphrase = null
-                val fragmentActivity = activity
-                val cipher = vaultViewModel.biometrics.encryptCipher()
-                if (fragmentActivity == null || cipher == null) {
-                    vaultViewModel.show("This device's keystore is not available.")
-                } else {
-                    Biometrics.authenticate(
-                        activity = fragmentActivity,
-                        title = "Enable fingerprint unlock",
-                        subtitle = "Confirm to store your passphrase",
-                        cipher = cipher,
-                        onSuccess = { authenticated ->
-                            if (vaultViewModel.biometrics.store(authenticated, passphrase)) {
-                                biometricsEnabled = true
-                                vaultViewModel.show("Fingerprint unlock enabled.")
-                            } else {
-                                vaultViewModel.show("Could not store the passphrase.")
-                            }
-                        },
-                        onFailure = { message -> message?.let(vaultViewModel::show) },
-                    )
+                vaultViewModel.verifyBiometricEnrollment(passphrase) { token ->
+                    val fragmentActivity = activity
+                    val cipher = vaultViewModel.biometrics.encryptCipher()
+                    if (fragmentActivity == null || cipher == null) {
+                        vaultViewModel.show("This device's keystore is not available.")
+                    } else {
+                        Biometrics.authenticate(
+                            activity = fragmentActivity,
+                            title = "Enable fingerprint unlock",
+                            subtitle = "Confirm to store your passphrase",
+                            cipher = cipher,
+                            onSuccess = { authenticated ->
+                                vaultViewModel.completeBiometricEnrollment(
+                                    token,
+                                    { vaultViewModel.biometrics.store(authenticated, passphrase) },
+                                ) {
+                                    biometricsEnabled = true
+                                    vaultViewModel.show("Fingerprint unlock enabled.")
+                                }
+                            },
+                            onFailure = { message -> message?.let(vaultViewModel::show) },
+                        )
+                    }
                 }
             },
         )

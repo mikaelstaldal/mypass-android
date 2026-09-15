@@ -1,13 +1,15 @@
 package nu.staldal.pw.util
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.os.Build
-import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyPermanentlyInvalidatedException
+import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
-import android.util.Base64
+import java.util.Base64
 import androidx.core.content.edit
 import java.security.KeyStore
+import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -27,11 +29,14 @@ import javax.crypto.spec.GCMParameterSpec
  *
  * This weakens the vault to the device's biometric gate for as long as it is
  * enabled — a deliberate trade, off by default, and undone by [clear].
+ * Missing/invalidated keys and malformed or unauthentic ciphertext disable it;
+ * transient keystore faults on read return failure without destroying enrollment.
+ * Failed writes clear their attempted enrollment.
  */
-class BiometricPassphraseStore(context: Context) {
-
-    private val prefs =
+class BiometricPassphraseStore internal constructor(private val prefs: SharedPreferences) {
+    constructor(context: Context) : this(
         context.applicationContext.getSharedPreferences("pw-biometric", Context.MODE_PRIVATE)
+    )
 
     /** Whether a passphrase has been wrapped and is available to unwrap. */
     fun isEnabled(): Boolean = prefs.contains(KEY_CIPHERTEXT) && prefs.contains(KEY_IV)
@@ -53,14 +58,21 @@ class BiometricPassphraseStore(context: Context) {
      * ciphertext is dropped, since it can never be read again.
      */
     fun decryptCipher(): Cipher? {
-        val iv = prefs.getString(KEY_IV, null)?.let { Base64.decode(it, Base64.NO_WRAP) }
-            ?: return null
-        val key = existingKey() ?: return null
         return try {
+            val iv = prefs.getString(KEY_IV, null)?.let { Base64.getDecoder().decode(it) }
+                ?: return null
+            require(iv.size == GCM_IV_BYTES)
+            val key = existingKey() ?: run { clear(); return null }
             Cipher.getInstance(TRANSFORMATION).apply {
                 init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv))
             }
         } catch (e: KeyPermanentlyInvalidatedException) {
+            clear()
+            null
+        } catch (e: IllegalArgumentException) {
+            clear()
+            null
+        } catch (e: ClassCastException) {
             clear()
             null
         } catch (e: Exception) {
@@ -68,48 +80,74 @@ class BiometricPassphraseStore(context: Context) {
         }
     }
 
-    /** Wrap and store the passphrase under an already-authenticated cipher. */
-    fun store(cipher: Cipher, passphrase: String): Boolean = try {
-        val ciphertext = cipher.doFinal(passphrase.toByteArray(Charsets.UTF_8))
-        // commit, not apply: the caller reports success to the user, and
-        // "enabled" must not mean "queued".
-        prefs.edit(commit = true) {
-            putString(KEY_CIPHERTEXT, Base64.encodeToString(ciphertext, Base64.NO_WRAP))
-            putString(KEY_IV, Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+    /** Wrap and synchronously persist; wipe the owned UTF-8 plaintext even on failure. */
+    fun store(cipher: Cipher, passphrase: String): Boolean {
+        val plaintext = passphrase.toByteArray(Charsets.UTF_8)
+        return try {
+            val ciphertext = cipher.doFinal(plaintext)
+            val committed = prefs.edit()
+                .putString(KEY_CIPHERTEXT, Base64.getEncoder().encodeToString(ciphertext))
+                .putString(KEY_IV, Base64.getEncoder().encodeToString(cipher.iv))
+                .commit()
+            // commit failure can still update the in-memory preferences. Destroy
+            // the key as well so those bytes cannot appear usable afterwards.
+            if (!committed) clear()
+            committed
+        } catch (e: Exception) {
+            clear()
+            false
+        } finally {
+            plaintext.fill(0)
         }
-        true
-    } catch (e: Exception) {
-        false
     }
 
-    /** Unwrap the passphrase under an already-authenticated cipher. */
-    fun retrieve(cipher: Cipher): String? = try {
-        val ciphertext = prefs.getString(KEY_CIPHERTEXT, null)
-            ?.let { Base64.decode(it, Base64.NO_WRAP) } ?: return null
-        String(cipher.doFinal(ciphertext), Charsets.UTF_8)
-    } catch (e: Exception) {
-        null
+    /** Strings on ART cannot be wiped; the intermediate decrypted bytes can. */
+    fun retrieve(cipher: Cipher): String? {
+        var plaintext: ByteArray? = null
+        return try {
+            val ciphertext = prefs.getString(KEY_CIPHERTEXT, null)
+                ?.let { Base64.getDecoder().decode(it) } ?: return null
+            plaintext = cipher.doFinal(ciphertext)
+            String(plaintext, Charsets.UTF_8)
+        } catch (e: AEADBadTagException) {
+            clear()
+            null
+        } catch (e: KeyPermanentlyInvalidatedException) {
+            clear()
+            null
+        } catch (e: IllegalArgumentException) {
+            clear()
+            null
+        } catch (e: ClassCastException) {
+            clear()
+            null
+        } catch (e: Exception) {
+            null
+        } finally {
+            plaintext?.fill(0)
+        }
     }
 
     /** Forget the wrapped passphrase and destroy the key that could read it. */
     fun clear() {
-        prefs.edit { remove(KEY_CIPHERTEXT); remove(KEY_IV) }
+        try {
+            prefs.edit { remove(KEY_CIPHERTEXT); remove(KEY_IV) }
+        } catch (e: Exception) {
+            // Still attempt key destruction when preferences are unavailable.
+        }
         try {
             keyStore().deleteEntry(KEY_ALIAS)
         } catch (e: Exception) {
-            // Nothing to delete, or a keystore that will not talk to us.
-            // Either way the ciphertext is gone and cannot be read back.
+            // Cleanup is best effort when the keystore is unavailable.
+            // No success is reported for a failed enrollment write.
         }
     }
 
     private fun keyStore(): KeyStore =
         KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
 
-    private fun existingKey(): SecretKey? = try {
+    private fun existingKey(): SecretKey? =
         keyStore().getKey(KEY_ALIAS, null) as? SecretKey
-    } catch (e: Exception) {
-        null
-    }
 
     private fun orCreateKey(): SecretKey = existingKey() ?: generateKey()
 
@@ -143,6 +181,7 @@ class BiometricPassphraseStore(context: Context) {
         const val KEY_ALIAS = "pw-passphrase"
         const val TRANSFORMATION = "AES/GCM/NoPadding"
         const val GCM_TAG_BITS = 128
+        const val GCM_IV_BYTES = 12
         const val KEY_CIPHERTEXT = "ciphertext"
         const val KEY_IV = "iv"
     }

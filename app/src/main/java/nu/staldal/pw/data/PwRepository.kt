@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -106,6 +107,7 @@ class PwRepository(
      * the app mid-unlock would open the vault behind the user's back.
      */
     private var lockEpoch: Long = 0
+    private var vaultGeneration: Long = 0
 
     /**
      * Minutes of inactivity before the vault relocks; 0 disables the timer.
@@ -180,6 +182,88 @@ class PwRepository(
             } catch (e: VaultException) {
                 throw mapVaultException(file, e)
             }
+        }
+    }
+
+    /** A single-use enrollment authorization tied to this repository session and key. */
+    class Enrollment internal constructor(
+        internal val owner: PwRepository,
+        internal val epoch: Long,
+        internal val generation: Long,
+    ) {
+        internal var consumed = false
+    }
+
+    /** Verify without reopening the vault. Snapshot before waiting so a lock or replacement wins. */
+    suspend fun verifyBiometricEnrollment(enteredPassphrase: String): Enrollment {
+        val token = synchronized(stateLock) {
+            requireUnlocked()
+            Enrollment(this, lockEpoch, vaultGeneration)
+        }
+        return mutex.withLock {
+            synchronized(stateLock) { requireEnrollmentLocked(token) }
+            Passphrase(enteredPassphrase).use { pass ->
+                try {
+                    withContext(ioDispatcher) { Vault.load(vaultFile, pass).also(Validation::validateEntries) }
+                } catch (e: VaultException) {
+                    throw mapVaultException(vaultFile, e)
+                }
+            }
+            synchronized(stateLock) {
+                requireEnrollmentLocked(token)
+                lastAccessMillis = elapsedMillis()
+                scheduleExpiryLocked()
+            }
+            token
+        }
+    }
+
+    private fun requireEnrollmentLocked(token: Enrollment) {
+        if (expiredLocked()) lockLocked()
+        if (token.owner !== this || lockEpoch != token.epoch ||
+            vaultGeneration != token.generation || _state.value !is VaultState.Unlocked
+        ) throw PwException.Locked()
+    }
+
+    /**
+     * Serialize persistence with replacements. [discard] must remove attempted storage
+     * without prompting; it runs if locking or cancellation wins during persistence.
+     * Both callbacks must avoid throwing; [store] reports persistence failure as false.
+     */
+    suspend fun completeBiometricEnrollment(
+        token: Enrollment,
+        discard: () -> Unit,
+        store: () -> Boolean,
+    ): Boolean = mutex.withLock {
+        var attempted = false
+        try {
+            withContext(ioDispatcher) {
+                synchronized(stateLock) {
+                    requireEnrollmentLocked(token)
+                    if (token.consumed) throw PwException.Locked()
+                    // Consume on attempt: an authenticated cipher cannot safely be reused after failure.
+                    token.consumed = true
+                }
+                attempted = true
+                val stored = store()
+                try {
+                    synchronized(stateLock) {
+                        requireEnrollmentLocked(token)
+                        if (stored) {
+                            lastAccessMillis = elapsedMillis()
+                            scheduleExpiryLocked()
+                        }
+                    }
+                } catch (e: PwException.Locked) {
+                    discard()
+                    throw e
+                }
+                stored
+            }
+        } catch (e: CancellationException) {
+            // Cancellation can arrive at the dispatcher return after persistence.
+            if (attempted) withContext(NonCancellable + ioDispatcher) { discard() }
+            throw e
         }
     }
 
@@ -432,6 +516,7 @@ class PwRepository(
             throw mapVaultException(file, e)
         } finally {
             if (committed) {
+                synchronized(stateLock) { vaultGeneration++ }
                 try {
                     onReplacementCommitted()
                 } catch (e: Throwable) {
