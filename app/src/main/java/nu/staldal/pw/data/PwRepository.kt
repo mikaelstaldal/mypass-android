@@ -248,33 +248,39 @@ class PwRepository(
      * vault is still there. The local backup is replaced with a snapshot of
      * the imported vault under its passphrase before replacing the primary.
      */
-    suspend fun importVault(input: InputStream, importPassphrase: String) = mutex.withLock {
+    suspend fun importVault(input: InputStream, importPassphrase: String) {
+        // Ciphertext reads need no repository mutex. A stalled provider must
+        // not prevent unlocks/edits, but a lock during the read still wins.
+        val epoch = synchronized(stateLock) { lockEpoch }
         val data = try {
-            input.readBytes()
+            withContext(ioDispatcher) { Vault.readBounded(input) }
+        } catch (e: VaultException) {
+            throw mapVaultException(vaultFile, e)
         } catch (e: IOException) {
             throw PwException.Io(VaultException.Read(vaultFile, e))
         }
-        openAfter(Passphrase(importPassphrase), replacingKey = true) { pass ->
-            val entries = try {
-                val plaintext = withContext(ioDispatcher) {
-                    ScryptFormat.decrypt(data, pass.expose())
+        mutex.withLock {
+            openAfter(Passphrase(importPassphrase), replacingKey = true, epoch = epoch) { pass ->
+                val entries = try {
+                    withContext(ioDispatcher) {
+                        val plaintext = ScryptFormat.decrypt(data, pass.expose())
+                        try {
+                            Vault.parse(plaintext.toString(Charsets.UTF_8)).also(Validation::validateEntries)
+                        } finally {
+                            plaintext.fill(0)
+                        }
+                    }
+                } catch (e: ScryptFormatException) {
+                    throw mapVaultException(vaultFile, VaultException.Format(e))
+                } catch (e: VaultException) {
+                    throw mapVaultException(vaultFile, e)
                 }
-                try {
-                    Vault.parse(plaintext.toString(Charsets.UTF_8))
-                } finally {
-                    plaintext.fill(0)
-                }
-            } catch (e: ScryptFormatException) {
-                throw mapVaultException(vaultFile, VaultException.Format(e))
-            } catch (e: VaultException) {
-                throw mapVaultException(vaultFile, e)
+                vaultDir.mkdirs()
+                // Re-encrypt rather than copying the bytes, so the vault on this
+                // device always uses this device's configured KDF cost.
+                withContext(ioDispatcher) { writeVault(vaultFile, pass, entries, replacingKey = true) }
+                entries
             }
-            Validation.validateEntries(entries)
-            vaultDir.mkdirs()
-            // Re-encrypt rather than copying the bytes, so the vault on this
-            // device always uses this device's configured KDF cost.
-            withContext(ioDispatcher) { writeVault(vaultFile, pass, entries, replacingKey = true) }
-            entries
         }
     }
 
@@ -289,11 +295,11 @@ class PwRepository(
     private suspend fun openAfter(
         pass: Passphrase,
         replacingKey: Boolean = false,
+        epoch: Long = synchronized(stateLock) { lockEpoch },
         produce: suspend (Passphrase) -> List<PasswordEntry>,
     ) {
         var owned = true
         try {
-            val epoch = synchronized(stateLock) { lockEpoch }
             val entries = produce(pass)
             synchronized(stateLock) {
                 if (lockEpoch != epoch) {
@@ -414,6 +420,8 @@ class PwRepository(
     private fun mapVaultException(file: File, e: VaultException): PwException = when {
         e is VaultException.Format &&
             e.cause is ScryptFormatException.WrongPassphrase -> PwException.WrongPassphrase()
+        e is VaultException.ResourceLimit ||
+            (e is VaultException.Format && e.cause is ScryptFormatException.ParamsTooLarge) -> PwException.ResourceLimit(e)
         e is VaultException.Read || e is VaultException.Write -> PwException.Io(e)
         else -> PwException.CorruptVault(file, e)
     }

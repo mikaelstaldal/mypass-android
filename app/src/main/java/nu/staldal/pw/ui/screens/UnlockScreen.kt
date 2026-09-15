@@ -215,17 +215,12 @@ fun UnlockScreen(
                     when {
                         importing -> {
                             val uri = importUri
-                            val stream = uri?.let {
-                                context.contentResolver.openInputStream(it)
-                            }
-                            if (stream == null) {
-                                viewModel.show("Could not read the file you picked.")
-                            } else {
-                                viewModel.importVault(stream, passphrase) {
-                                    hasVault = true
-                                    importing = false
-                                    onUnlocked()
-                                }
+                            viewModel.importVault(
+                                { uri?.let { context.contentResolver.openInputStream(it) } }, passphrase,
+                            ) {
+                                hasVault = true
+                                importing = false
+                                onUnlocked()
                             }
                         }
                         hasVault -> viewModel.unlock(passphrase, onUnlocked)

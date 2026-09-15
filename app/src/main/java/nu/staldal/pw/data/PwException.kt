@@ -10,6 +10,8 @@ import nu.staldal.pw.vault.VaultException
  */
 sealed class PwException(message: String, cause: Throwable? = null) : Exception(message, cause) {
 
+    class ResourceLimit(cause: VaultException) : PwException(cause.message ?: "vault resource limit exceeded", cause)
+
     class NoVault(val file: File) : PwException("no vault at $file")
 
     class VaultAlreadyExists(val file: File) : PwException("vault $file already exists")

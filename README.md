@@ -91,6 +91,36 @@ accessible under its original passphrase; changing this device cannot revoke it.
 Going the other way, **Settings → Export encrypted vault** writes the file out
 through the system file picker, unchanged and still encrypted.
 
+Android applies resource limits before importing or unlocking a vault: encrypted
+files are limited to 4 MiB, JSON nesting to 8 levels, entries to 10,000, and
+encoded string tokens to 16,384 characters (including the closing quote).
+The parser is also limited to 110,016 value/container tokens before allocating
+the JSON tree, including object keys and primitives in malformed entries.
+Provider opening, reading, parsing and closing run off the UI thread. Reads stop
+at the file limit plus one byte even for an endless stream; a provider that
+blocks inside a read can still occupy an import worker until it returns, but
+provider reads do not hold the repository mutex and cannot block other vault
+operations.
+
+The KDF is limited to `N * r * p <= 2^20` and an estimated scratch allocation of
+`128 * r * (N + p + 2)` bytes, capped at the smaller of 160 MiB and half the
+process maximum heap. These limits also apply to writes so a vault cannot be
+saved with parameters this phone refuses to unlock. Standard desktop defaults
+fit on phones with enough heap; smaller phones should lower the scrypt cost in
+Settings. Defaults and the Settings range are chosen from the costs this
+phone accepts; older saved Settings values are clamped for future writes.
+Existing higher-cost ciphertext is still refused and needs desktop migration.
+Higher-cost desktop files are refused with a resource-limit message,
+without changing the existing vault or backup. To migrate one, decrypt it using
+the desktop `scrypt` tool and re-encrypt the unchanged JSON with
+`scrypt enc --logN 16 -r 8 -p 1` (or a lower logN for a smaller phone), then import
+that file. Handle the decrypted desktop file as a secret. There is no automatic
+high-cost retry or timeout around the synchronous KDF. The shared file format
+remains unchanged; the accepted parameter range deliberately differs from
+desktop to bound Android resource use and respect Bouncy Castle requirements.
+These are JVM-tested limits; device ANR/OOM exploitability
+from a malicious user-selected document/provider has not been demonstrated.
+
 ## Where the vault lives
 
 `pw.scrypt` sits in the app's private storage, where no other app on the device

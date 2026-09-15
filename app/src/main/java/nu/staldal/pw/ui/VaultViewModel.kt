@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import nu.staldal.pw.PwApplication
 import nu.staldal.pw.data.PasswordGenerator
@@ -78,8 +80,13 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
     fun changePassphrase(newPassphrase: String, onSuccess: () -> Unit) =
         run(onSuccess) { repository.changePassphrase(newPassphrase) }
 
-    fun importVault(input: InputStream, passphrase: String, onSuccess: () -> Unit) =
-        run(onSuccess) { input.use { repository.importVault(it, passphrase) } }
+    fun importVault(openInput: () -> InputStream?, passphrase: String, onSuccess: () -> Unit) =
+        run(onSuccess) {
+            withContext(Dispatchers.IO) {
+                val input = openInput() ?: throw PwException.InvalidInput("file", "could not read the file you picked")
+                input.use { repository.importVault(it, passphrase) }
+            }
+        }
 
     fun exportVault(out: OutputStream, onSuccess: () -> Unit) =
         run(onSuccess) { out.use { repository.copyVaultTo(it) } }

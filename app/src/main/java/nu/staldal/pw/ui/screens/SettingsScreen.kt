@@ -234,8 +234,9 @@ fun SettingsScreen(
             SectionHeader("Vault file")
             NumberSetting(
                 label = "scrypt cost, log2(N)",
-                help = "17 is what desktop pw writes and needs about 128 MiB to " +
-                    "open. Lower it only if this device cannot manage that. " +
+                help = "This device supports ${ScryptDefaults.MIN_LOG_N}–${ScryptDefaults.MAX_LOG_N}. " +
+                    "Desktop cost 17 needs about 128 MiB. The default is lowered " +
+                    "to fit this phone; lower costs weaken offline attack resistance. " +
                     "Takes effect on the next write.",
                 value = settings.scryptLogN,
                 onValue = { onScryptLogN(it.coerceIn(ScryptDefaults.MIN_LOG_N, ScryptDefaults.MAX_LOG_N)) },
@@ -339,20 +340,17 @@ fun SettingsScreen(
             onDismiss = { importUri = null },
             onConfirm = { importPassphrase ->
                 importUri = null
-                val stream = context.contentResolver.openInputStream(pendingImport)
-                if (stream == null) {
-                    vaultViewModel.show("Could not read the file you picked.")
-                } else {
-                    vaultViewModel.importVault(stream, importPassphrase) {
-                        // The wrapped copy unlocks the vault that was just
-                        // replaced, so it is no longer the right passphrase.
-                        if (vaultViewModel.biometrics.isEnabled()) {
-                            vaultViewModel.biometrics.clear()
-                            biometricsEnabled = false
-                        }
-                        vaultViewModel.show("Vault imported.")
-                        onBack()
+                vaultViewModel.importVault(
+                    { context.contentResolver.openInputStream(pendingImport) }, importPassphrase,
+                ) {
+                    // The wrapped copy unlocks the vault that was just
+                    // replaced, so it is no longer the right passphrase.
+                    if (vaultViewModel.biometrics.isEnabled()) {
+                        vaultViewModel.biometrics.clear()
+                        biometricsEnabled = false
                     }
+                    vaultViewModel.show("Vault imported.")
+                    onBack()
                 }
             },
         )

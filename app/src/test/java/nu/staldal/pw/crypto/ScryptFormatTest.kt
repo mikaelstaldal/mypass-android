@@ -54,6 +54,24 @@ class ScryptFormatTest {
         assertEquals(17, params.logN)
         assertEquals(8, params.r)
         assertEquals(1, params.p)
+        ScryptFormat.validate(params.logN, params.r.toLong(), params.p.toLong(), 512L shl 20)
+    }
+
+    @Test
+    fun deviceDefaultsAndEveryOfferedCostPassValidationWithoutKdf() {
+        for ((heapMiB, expectedMax) in listOf(128 to 15, 192 to 16, 256 to 16, 512 to 17)) {
+            val heap = heapMiB.toLong() shl 20
+            val max = ScryptFormat.maxSupportedLogN(heap)
+            assertEquals(expectedMax, max)
+            for (logN in nu.staldal.pw.data.ScryptDefaults.MIN_LOG_N..max) {
+                ScryptFormat.validate(logN, 8, 1, heap)
+            }
+            assertThrows(ScryptFormatException.ParamsTooLarge::class.java) {
+                ScryptFormat.validate(max + 1, 8, 1, heap)
+            }
+        }
+        assertEquals(ScryptFormat.maxSupportedLogN(), nu.staldal.pw.data.ScryptDefaults.LOG_N)
+        assertEquals(ScryptFormat.maxSupportedLogN(), nu.staldal.pw.data.ScryptDefaults.MAX_LOG_N)
     }
 
     @Test
@@ -156,6 +174,39 @@ class ScryptFormatTest {
         }
         assertEquals(30, e.logN)
         assertEquals(8L, e.r)
+    }
+
+    @Test
+    fun checksummedHighCostHeadersRejectedBeforeKdf() {
+        for (params in listOf(
+            ScryptFormat.Params(20, 8, 1), // 1 GiB nominal memory
+            ScryptFormat.Params(17, 8, 2), // acceptable nominal memory, excessive work
+            ScryptFormat.Params(12, 8, 1024), // p cannot bypass the work budget
+        )) {
+            val data = encrypted()
+            data[7] = params.logN.toByte()
+            java.nio.ByteBuffer.wrap(data).putInt(8, params.r).putInt(12, params.p)
+            java.security.MessageDigest.getInstance("SHA-256")
+                .digest(data.copyOfRange(0, 48)).copyInto(data, 48, 0, 16)
+            assertThrows(ScryptFormatException.ParamsTooLarge::class.java) {
+                ScryptFormat.decrypt(data, "wrong".toByteArray())
+            }
+        }
+    }
+
+    @Test
+    fun backendInvalidAndSignedParamsStayInExceptionHierarchy() {
+        for (params in listOf(ScryptFormat.Params(16, 1, 1),
+            ScryptFormat.Params(-1, 8, 1), ScryptFormat.Params(12, -1, 1))) {
+            assertThrows(ScryptFormatException.InvalidParams::class.java) {
+                ScryptFormat.encrypt(plaintext, passphrase, params)
+            }
+        }
+        val data = encrypted()
+        java.nio.ByteBuffer.wrap(data).putInt(8, -1).putInt(12, -1)
+        assertThrows(ScryptFormatException.InvalidParams::class.java) {
+            ScryptFormat.decrypt(data, passphrase)
+        }
     }
 
     @Test

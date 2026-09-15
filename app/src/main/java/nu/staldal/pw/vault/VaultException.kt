@@ -11,6 +11,8 @@ import nu.staldal.pw.crypto.ScryptFormatException
 sealed class VaultException(message: String, cause: Throwable? = null) :
     Exception(message, cause) {
 
+    class ResourceLimit : VaultException("vault exceeds Android size or content limits")
+
     class Read(val file: File, cause: Throwable) :
         VaultException("cannot read $file: ${cause.message}", cause)
 

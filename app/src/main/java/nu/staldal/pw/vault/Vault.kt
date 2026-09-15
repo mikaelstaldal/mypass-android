@@ -1,6 +1,8 @@
 package nu.staldal.pw.vault
 
 import java.io.File
+import java.io.InputStream
+import java.io.ByteArrayOutputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.nio.channels.FileChannel
@@ -39,9 +41,82 @@ object Vault {
         explicitNulls = false
     }
 
+    // Small enough to bound the ciphertext, plaintext, JSON tree and domain copies.
+    const val MAX_FILE_BYTES = 4 * 1024 * 1024
+    const val MAX_ENTRIES = 10_000
+    const val MAX_FIELD_CHARS = 16_384
+    const val MAX_DEPTH = 8
+    private const val ENTRY_FIELD_COUNT = 5 // name, username, password, url, realm
+    const val MAX_JSON_TOKENS = MAX_ENTRIES * (2 * ENTRY_FIELD_COUNT + 1) + 16
+
+    /** Reads at most the limit plus one byte, even from an endless provider. */
+    fun readBounded(input: InputStream): ByteArray {
+        val out = ByteArrayOutputStream()
+        val buffer = ByteArray(8192)
+        while (true) {
+            val count = input.read(buffer, 0, minOf(buffer.size, MAX_FILE_BYTES + 1 - out.size()))
+            if (count < 0) return out.toByteArray()
+            if (count == 0) throw IOException("provider made no read progress")
+            if (out.size() + count > MAX_FILE_BYTES) throw VaultException.ResourceLimit()
+            out.write(buffer, 0, count)
+        }
+    }
+
+    /** Scan before recursive JSON parsing; escaped quotes do not end strings. */
+    private fun checkContentBudget(text: String) {
+        if (text.length > MAX_FILE_BYTES - ScryptFormat.OVERHEAD) throw VaultException.ResourceLimit()
+        var depth = 0
+        var quoted = false
+        var escaped = false
+        var fieldLength = 0
+        var objects = 0
+        var tokens = 0
+        var primitive = false
+        fun token() {
+            if (++tokens > MAX_JSON_TOKENS) throw VaultException.ResourceLimit()
+        }
+        for (ch in text) {
+            if (quoted) {
+                if (++fieldLength > MAX_FIELD_CHARS) throw VaultException.ResourceLimit()
+                if (escaped) escaped = false
+                else if (ch == '\\') escaped = true
+                else if (ch == '"') quoted = false
+            } else when (ch) {
+                '"' -> { token(); quoted = true; fieldLength = 0; primitive = false }
+                '{', '[' -> {
+                    token()
+                    primitive = false
+                    if (++depth > MAX_DEPTH) throw VaultException.ResourceLimit()
+                    if (ch == '{' && ++objects > MAX_ENTRIES + 1) throw VaultException.ResourceLimit()
+                }
+                '}', ']' -> {
+                    if (--depth < 0) throw VaultException.InvalidJson(null)
+                    primitive = false
+                }
+                ',', ':', ' ', '\t', '\r', '\n' -> primitive = false
+                else -> if (!primitive) { token(); primitive = true }
+            }
+        }
+    }
+
     /** Serialize entries to the JSON envelope — exactly what [store] encrypts. */
-    fun toJson(entries: List<PasswordEntry>): String =
-        json.encodeToString(Envelope.serializer(), Envelope(ENVELOPE_VERSION, entries))
+    fun toJson(entries: List<PasswordEntry>): String {
+        if (entries.size > MAX_ENTRIES) throw VaultException.ResourceLimit()
+        entries.forEach { entry ->
+            if (listOf(entry.name, entry.username, entry.password.expose(), entry.url, entry.realm)
+                    .any { it != null && it.length >= MAX_FIELD_CHARS }) throw VaultException.ResourceLimit()
+        }
+        return json.encodeToString(Envelope.serializer(), Envelope(ENVELOPE_VERSION, entries))
+            .also { checkContentBudget(it)
+                val encoded = it.toByteArray(Charsets.UTF_8)
+                try {
+                    if (encoded.size > MAX_FILE_BYTES - ScryptFormat.OVERHEAD)
+                        throw VaultException.ResourceLimit()
+                } finally {
+                    encoded.fill(0)
+                }
+            }
+    }
 
     @kotlinx.serialization.Serializable
     private data class Envelope(val version: Int, val entries: List<PasswordEntry>)
@@ -52,7 +127,7 @@ object Vault {
      */
     fun load(file: File, passphrase: Passphrase): List<PasswordEntry> {
         val data = try {
-            file.readBytes()
+            file.inputStream().use(::readBounded)
         } catch (e: IOException) {
             throw VaultException.Read(file, e)
         }
@@ -75,6 +150,7 @@ object Vault {
      * On failure the decrypted text is deliberately kept out of the error.
      */
     internal fun parse(text: String): List<PasswordEntry> {
+        checkContentBudget(text)
         val root = try {
             json.parseToJsonElement(text)
         } catch (e: Exception) {
@@ -93,6 +169,7 @@ object Vault {
             }
             else -> throw VaultException.InvalidJson(null)
         }
+        if (entries.size > MAX_ENTRIES) throw VaultException.ResourceLimit()
         return try {
             entries.map { json.decodeFromJsonElement(PasswordEntry.serializer(), it) }
         } catch (e: Exception) {

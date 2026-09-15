@@ -18,8 +18,8 @@ sealed class ScryptFormatException(message: String) : Exception(message) {
         ScryptFormatException("invalid scrypt parameters (log2(N)=$logN, r=$r, p=$p)")
 
     class ParamsTooLarge(val logN: Int, val r: Long) : ScryptFormatException(
-        "scrypt parameters require too much memory " +
-            "(log2(N)=$logN, r=$r; the limit is 1 GiB)"
+        "scrypt parameters exceed Android memory or work limits " +
+            "(log2(N)=$logN, r=$r). Re-encrypt on desktop with --logN 16 -r 8 -p 1, or lower logN for a smaller phone."
     )
 
     class WrongPassphrase : ScryptFormatException("incorrect passphrase")

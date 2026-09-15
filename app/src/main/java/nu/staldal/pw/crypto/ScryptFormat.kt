@@ -48,9 +48,9 @@ object ScryptFormat {
      * Cap on the memory the KDF may require when decrypting, so a corrupt or
      * malicious header cannot demand an enormous allocation.
      */
-    private const val MAX_KDF_MEMORY = 1L shl 30 // 1 GiB
+    private const val MAX_KDF_MEMORY = 160L shl 20 // includes scrypt scratch arrays
     private const val MAX_LOG_N = 22
-    private const val MAX_P = 1024L
+    private const val MAX_WORK = 1L shl 20 // N * r * p; desktop defaults
 
     /** scrypt KDF cost parameters as stored in the file header. */
     data class Params(val logN: Int, val r: Int, val p: Int) {
@@ -63,24 +63,43 @@ object ScryptFormat {
         }
     }
 
-    private fun validate(logN: Int, r: Long, p: Long) {
-        if (logN == 0 || r == 0L || p == 0L || p > MAX_P ||
-            // r * p < 2^30, required by the scrypt specification
-            r * p >= (1L shl 30)
+    internal fun validate(
+        logN: Int, r: Long, p: Long,
+        maxHeapBytes: Long = Runtime.getRuntime().maxMemory(),
+    ) {
+        if (logN <= 0 || r <= 0L || p <= 0L || r > Int.MAX_VALUE || p > Int.MAX_VALUE || r * p >= (1L shl 30) ||
+            (r == 1L && logN >= 16)
         ) {
             throw ScryptFormatException.InvalidParams(logN, r, p)
         }
-        if (logN > MAX_LOG_N || (128L shl logN) * r > MAX_KDF_MEMORY) {
+        // Bound logN before shifting/multiplying untrusted unsigned header values.
+        if (logN > MAX_LOG_N) throw ScryptFormatException.ParamsTooLarge(logN, r)
+        val n = 1L shl logN
+        val memory = 128L * r * (n + p + 2)
+        val memoryLimit = minOf(MAX_KDF_MEMORY, maxHeapBytes / 2)
+        if (memory > memoryLimit || n * r * p > MAX_WORK) {
             throw ScryptFormatException.ParamsTooLarge(logN, r)
         }
     }
 
-    /**
-     * Derive `key_enc || key_hmac` (64 bytes) from the passphrase and salt.
-     * The caller owns the returned array and must wipe it.
-     */
+    /** Highest write cost (r=8, p=1) accepted on this device, without running a KDF. */
+    fun maxSupportedLogN(maxHeapBytes: Long = Runtime.getRuntime().maxMemory()): Int =
+        (Params.DEFAULT.logN downTo 1).firstOrNull { logN ->
+            try {
+                validate(logN, 8, 1, maxHeapBytes)
+                true
+            } catch (_: ScryptFormatException.ParamsTooLarge) {
+                false
+            }
+        } ?: 0
+
+    /** Caller owns the derived key and must wipe it. */
     private fun deriveKeys(passphrase: ByteArray, salt: ByteArray, params: Params): ByteArray =
-        SCrypt.generate(passphrase, salt, 1 shl params.logN, params.r, params.p, 64)
+        try {
+            SCrypt.generate(passphrase, salt, 1 shl params.logN, params.r, params.p, 64)
+        } catch (_: IllegalArgumentException) {
+            throw ScryptFormatException.InvalidParams(params.logN, params.r.toLong(), params.p.toLong())
+        }
 
     private fun hmac(keyHmac: ByteArray, data: ByteArray, length: Int = data.size): ByteArray {
         val mac = Mac.getInstance("HmacSHA256")
@@ -136,6 +155,7 @@ object ScryptFormat {
         params: Params,
         salt: ByteArray,
     ): ByteArray {
+        validate(params.logN, params.r.toLong(), params.p.toLong())
         val out = ByteArray(OVERHEAD + plaintext.size)
         MAGIC.copyInto(out)
         out[6] = VERSION.toByte()

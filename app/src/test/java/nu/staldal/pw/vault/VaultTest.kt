@@ -30,6 +30,53 @@ class VaultTest {
     private fun vaultFile() = File(temp.root, "pw.scrypt")
 
     @Test
+    fun contentBudgetsRejectBeforeJsonMaterialization() {
+        for (text in listOf(
+            "[" + "0,".repeat(Vault.MAX_JSON_TOKENS) + "0]",
+            "[".repeat(Vault.MAX_DEPTH + 1) + "]".repeat(Vault.MAX_DEPTH + 1),
+            "[" + List(Vault.MAX_ENTRIES + 1) { "{}" }.joinToString(",") + "]",
+            "[\"" + "x".repeat(Vault.MAX_FIELD_CHARS + 1) + "\"]",
+        )) {
+            assertThrows(VaultException.ResourceLimit::class.java) { Vault.parse(text) }
+        }
+        assertEquals(emptyList<PasswordEntry>(), Vault.parse("[]"))
+        assertEquals(emptyList<PasswordEntry>(), Vault.parse("{\"version\":1,\"entries\":[]}"))
+    }
+
+    @Test
+    fun maximumEntryCountWithEveryFieldRoundTripsWithinTokenBudget() {
+        val entries = List(Vault.MAX_ENTRIES) { index ->
+            PasswordEntry("entry-$index", "user", Secret("password"), "https://example.org", "realm")
+        }
+        assertEquals(entries, Vault.parse(Vault.toJson(entries)))
+        val escaped = listOf(entry("quotes", "\"\\[]{}"))
+        assertEquals(escaped, Vault.parse(Vault.toJson(escaped)))
+        assertThrows(VaultException.InvalidJson::class.java) {
+            Vault.parse("]" + "[".repeat(Vault.MAX_DEPTH + 1))
+        }
+    }
+
+    @Test
+    fun oversizedLocalFileIsBounded() {
+        val file = vaultFile()
+        java.io.RandomAccessFile(file, "rw").use { it.setLength(Vault.MAX_FILE_BYTES.toLong() + 1) }
+        passphrase().use { pass ->
+            assertThrows(VaultException.ResourceLimit::class.java) { Vault.load(file, pass) }
+        }
+    }
+
+    @Test
+    fun boundedReadAcceptsExactLimitAndRejectsNoProgress() {
+        assertEquals(Vault.MAX_FILE_BYTES,
+            Vault.readBounded(java.io.ByteArrayInputStream(ByteArray(Vault.MAX_FILE_BYTES))).size)
+        val stalled = object : java.io.InputStream() {
+            override fun read() = 0
+            override fun read(b: ByteArray, off: Int, len: Int) = 0
+        }
+        assertThrows(java.io.IOException::class.java) { Vault.readBounded(stalled) }
+    }
+
+    @Test
     fun replacementSurvivesEveryCommitBoundaryAndCanBeRetried() {
         val old = listOf(entry("old", "old-secret"))
         val incoming = listOf(entry("incoming", "new-secret"))

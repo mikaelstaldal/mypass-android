@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import nu.staldal.pw.crypto.ScryptFormat
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -36,9 +37,8 @@ data class SettingsState(
     val passwordLength: Int = PasswordGenerator.DEFAULT_LENGTH,
     val passwordCharset: String = PasswordGenerator.DEFAULT_CHARSET,
     /**
-     * log2(N) for the scrypt KDF when writing the vault. The default, 17, is
-     * what desktop `pw` writes and needs ~128 MiB; a low-memory phone may need
-     * less, at the cost of a cheaper offline attack on the file.
+     * log2(N) for writes. Prefer desktop cost 17, lowered automatically when
+     * this device cannot accept it, at the cost of a cheaper offline attack.
      */
     val scryptLogN: Int = ScryptDefaults.LOG_N,
     /**
@@ -54,9 +54,9 @@ data class SettingsState(
 }
 
 object ScryptDefaults {
-    const val LOG_N = 17
+    val LOG_N: Int get() = MAX_LOG_N
     const val MIN_LOG_N = 10
-    const val MAX_LOG_N = 20
+    val MAX_LOG_N: Int get() = ScryptFormat.maxSupportedLogN()
 }
 
 class Settings(context: Context) {
@@ -72,7 +72,8 @@ class Settings(context: Context) {
                 ?: SettingsState.DEFAULT_CLIPBOARD_CLEAR_SECONDS,
             passwordLength = prefs[PASSWORD_LENGTH] ?: PasswordGenerator.DEFAULT_LENGTH,
             passwordCharset = prefs[PASSWORD_CHARSET] ?: PasswordGenerator.DEFAULT_CHARSET,
-            scryptLogN = prefs[SCRYPT_LOG_N] ?: ScryptDefaults.LOG_N,
+            scryptLogN = (prefs[SCRYPT_LOG_N] ?: ScryptDefaults.LOG_N)
+                .coerceIn(ScryptDefaults.MIN_LOG_N, ScryptDefaults.MAX_LOG_N),
             browserCertificatePins = prefs[BROWSER_CERTIFICATE_PINS] ?: "",
         )
     }

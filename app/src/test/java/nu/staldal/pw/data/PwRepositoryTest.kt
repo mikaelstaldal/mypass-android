@@ -86,6 +86,104 @@ class PwRepositoryTest {
     }
 
     @Test
+    fun endlessImportIsBoundedRunsOnDispatcherAndPreservesVault() = runTest {
+        val repository = repository()
+        repository.createVault(passphrase)
+        repository.add(entry("old"))
+        val before = repository.vaultFile.readBytes()
+        var readCount = 0
+        val input = object : java.io.InputStream() {
+            override fun read(): Int = error("bulk reads expected")
+            override fun read(b: ByteArray, off: Int, len: Int): Int {
+                b.fill(0, off, off + len)
+                readCount += len
+                return len
+            }
+        }
+        val job = launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            assertFailsWith(PwException.ResourceLimit::class.java) {
+                repository.importVault(input, "wrong")
+            }
+        }
+        // The mutex is uncontended: this pins the repository dispatcher hop before
+        // reading, not the ViewModel dispatcher hop around provider opening.
+        assertEquals(0, readCount)
+        testScheduler.runCurrent()
+        job.join()
+        assertEquals(Vault.MAX_FILE_BYTES + 1, readCount)
+        assertArrayEquals(before, repository.vaultFile.readBytes())
+        assertEquals("pw-old", repository.get("old").password.expose())
+    }
+
+    @Test
+    fun stalledProviderDoesNotHoldRepositoryMutex() = runTest {
+        val repository = PwRepository(temp.root, { testScheduler.currentTime }, this,
+            kotlinx.coroutines.Dispatchers.IO).also {
+            it.scryptLogN = 12
+            it.autoLockMinutes = 0
+        }
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val input = object : java.io.InputStream() {
+            override fun read() = error("bulk reads expected")
+            override fun read(b: ByteArray, off: Int, len: Int): Int {
+                entered.countDown()
+                check(release.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                throw java.io.IOException("test provider released")
+            }
+        }
+        val importJob = launch {
+            assertFailsWith(PwException.Io::class.java) { repository.importVault(input, "wrong") }
+        }
+        try {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                // Use real time for this real blocked-I/O concurrency test.
+                kotlinx.coroutines.withTimeout(5_000) { repository.createVault(passphrase) }
+                assertTrue(repository.vaultExists())
+            }
+        } finally {
+            release.countDown()
+        }
+        importJob.join()
+    }
+
+    @Test
+    fun lockDuringProviderReadWinsOverImportUnlock() = runTest {
+        val repository = repository()
+        val data = ScryptFormat.encrypt("{\"version\":1,\"entries\":[]}".toByteArray(),
+            passphrase.toByteArray(), ScryptFormat.Params(12, 8, 1))
+        val input = object : ByteArrayInputStream(data) {
+            override fun read(b: ByteArray, off: Int, len: Int): Int {
+                repository.lock()
+                return super.read(b, off, len)
+            }
+        }
+        assertFailsWith(PwException.ReplacementCommitted::class.java) {
+            repository.importVault(input, passphrase)
+        }
+        assertEquals(VaultState.Locked, repository.state.value)
+        assertTrue(repository.vaultExists())
+    }
+
+    @Test
+    fun excessiveImportedJsonPreservesPrimaryAndBackup() = runTest {
+        val repository = repository()
+        repository.createVault(passphrase)
+        repository.add(entry("old"))
+        val before = repository.vaultFile.readBytes()
+        val backup = Vault.backupFile(repository.vaultFile).readBytes()
+        val oversized = ("[".repeat(Vault.MAX_DEPTH + 1) + "]".repeat(Vault.MAX_DEPTH + 1)).toByteArray()
+        val encrypted = ScryptFormat.encrypt(oversized, passphrase.toByteArray(), ScryptFormat.Params(12, 8, 1))
+        assertFailsWith(PwException.ResourceLimit::class.java) {
+            repository.importVault(ByteArrayInputStream(encrypted), passphrase)
+        }
+        assertArrayEquals(before, repository.vaultFile.readBytes())
+        assertArrayEquals(backup, Vault.backupFile(repository.vaultFile).readBytes())
+        assertEquals("pw-old", repository.get("old").password.expose())
+    }
+
+    @Test
     fun createThenListEmpty() = runTest {
         val repository = repository()
         repository.createVault(passphrase)
