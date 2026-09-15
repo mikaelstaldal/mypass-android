@@ -286,18 +286,12 @@ fun SettingsScreen(
             onDismiss = { changePassphrase = false },
             onConfirm = { newPassphrase ->
                 changePassphrase = false
+                val wasEnabled = vaultViewModel.biometrics.isEnabled()
                 vaultViewModel.changePassphrase(newPassphrase) {
-                    // The wrapped copy is now the old passphrase, so it would
-                    // fail to unlock. Drop it and let the user re-enable.
-                    if (vaultViewModel.biometrics.isEnabled()) {
-                        vaultViewModel.biometrics.clear()
-                        biometricsEnabled = false
-                        vaultViewModel.show(
-                            "Passphrase changed. Fingerprint unlock was turned off."
-                        )
-                    } else {
-                        vaultViewModel.show("Passphrase changed.")
-                    }
+                    vaultViewModel.show(
+                        "Passphrase changed." +
+                            if (wasEnabled) " Fingerprint unlock was turned off." else ""
+                    )
                 }
             },
         )
@@ -343,12 +337,6 @@ fun SettingsScreen(
                 vaultViewModel.importVault(
                     { context.contentResolver.openInputStream(pendingImport) }, importPassphrase,
                 ) {
-                    // The wrapped copy unlocks the vault that was just
-                    // replaced, so it is no longer the right passphrase.
-                    if (vaultViewModel.biometrics.isEnabled()) {
-                        vaultViewModel.biometrics.clear()
-                        biometricsEnabled = false
-                    }
                     vaultViewModel.show("Vault imported.")
                     onBack()
                 }

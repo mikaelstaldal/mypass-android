@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.first
 import nu.staldal.pw.data.PwRepository
 import nu.staldal.pw.data.Settings
 import nu.staldal.pw.data.SettingsState
+import nu.staldal.pw.util.BiometricPassphraseStore
 import nu.staldal.pw.util.Clipboard
 
 /**
@@ -26,6 +27,9 @@ class PwApplication : Application() {
         private set
 
     lateinit var settings: Settings
+        private set
+
+    lateinit var biometrics: BiometricPassphraseStore
         private set
 
     /**
@@ -44,7 +48,11 @@ class PwApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        repository = PwRepository(filesDir, SystemClock::elapsedRealtime, applicationScope)
+        biometrics = BiometricPassphraseStore(this)
+        repository = PwRepository(
+            filesDir, SystemClock::elapsedRealtime, applicationScope,
+            onReplacementCommitted = biometrics::clear,
+        )
         settings = Settings(this)
         // Autofill can arrive before the collector emits. Load the small local
         // preference blob before publishing this application to the service.

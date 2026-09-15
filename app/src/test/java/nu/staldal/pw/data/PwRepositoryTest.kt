@@ -54,6 +54,7 @@ class PwRepositoryTest {
      */
     private fun TestScope.repository(
         vaultDir: File = temp.root,
+        onReplacementCommitted: () -> Unit = {},
         replacementWriter: (File, Passphrase, List<PasswordEntry>, ScryptFormat.Params) -> Unit =
             Vault::storeReplacingKey,
     ) =
@@ -63,6 +64,7 @@ class PwRepositoryTest {
             this,
             StandardTestDispatcher(testScheduler),
             replacementWriter,
+            onReplacementCommitted,
         ).also { it.scryptLogN = 12 }
 
     private fun entry(name: String, password: String = "pw-$name", url: String? = null) =
@@ -75,11 +77,11 @@ class PwRepositoryTest {
      * suspends onto the test scheduler, which cannot run while `runBlocking`
      * holds the test thread. This awaits the suspending call properly.
      */
-    private suspend fun assertFailsWith(type: Class<out Throwable>, block: suspend () -> Unit) {
+    private suspend fun assertFailsWith(type: Class<out Throwable>, block: suspend () -> Unit): Throwable {
         try {
             block()
         } catch (e: Throwable) {
-            if (type.isInstance(e)) return
+            if (type.isInstance(e)) return e
             throw AssertionError("expected ${type.name} but was ${e.javaClass.name}", e)
         }
         throw AssertionError("expected ${type.name} but nothing was thrown")
@@ -501,7 +503,8 @@ class PwRepositoryTest {
     @Test
     fun replacementFailuresPreserveStateUntilPrimaryCommits() = runTest {
         for (step in Vault.ReplacementStep.entries) {
-            val repository = repository(temp.newFolder()) { file, pass, entries, params ->
+            var invalidations = 0
+            val repository = repository(temp.newFolder(), { invalidations++ }) { file, pass, entries, params ->
                 Vault.storeReplacingKey(file, pass, entries, params) {
                     if (it == step) throw java.io.IOException("interrupted")
                 }
@@ -512,6 +515,7 @@ class PwRepositoryTest {
             assertFailsWith(
                 if (committed) PwException.ReplacementCommitted::class.java else PwException.Io::class.java,
             ) { repository.changePassphrase("new key") }
+            assertEquals(if (committed) 1 else 0, invalidations)
             if (committed) {
                 assertTrue(repository.state.value is VaultState.Locked)
                 assertFailsWith(PwException.Locked::class.java) { repository.add(entry("blocked")) }
@@ -534,8 +538,9 @@ class PwRepositoryTest {
     @Test
     fun lockDuringReplacementKeepsVaultLockedButReportsIncomingKey() = runTest {
         for (importing in listOf(false, true)) {
+            var invalidations = 0
             lateinit var repository: PwRepository
-            repository = repository(temp.newFolder()) { file, pass, entries, params ->
+            repository = repository(temp.newFolder(), { invalidations++ }) { file, pass, entries, params ->
                 Vault.storeReplacingKey(file, pass, entries, params)
                 repository.lock()
             }
@@ -552,8 +557,108 @@ class PwRepositoryTest {
                     repository.changePassphrase("incoming key")
                 }
             }
+            assertEquals(1, invalidations)
             assertTrue(repository.state.value is VaultState.Locked)
             assertFailsWith(PwException.WrongPassphrase::class.java) { repository.unlock(passphrase) }
+            repository.unlock("incoming key")
+            assertEquals(listOf(entry(if (importing) "imported" else "local")), repository.entries())
+            repository.lock()
+        }
+    }
+
+    @Test
+    fun cleanupFailureStillReportsCommittedReplacementAndLocks() = runTest {
+        for (cleanupError in listOf(IllegalStateException("cleanup failed"), AssertionError("cleanup failed"))) {
+            for (durabilityFailure in listOf(false, true)) {
+                val repository = repository(
+                    temp.newFolder(),
+                    onReplacementCommitted = { throw cleanupError },
+                ) { file, pass, entries, params ->
+                    Vault.storeReplacingKey(file, pass, entries, params) {
+                        if (durabilityFailure && it == Vault.ReplacementStep.PRIMARY_RENAMED) {
+                            throw java.io.IOException("sync failed")
+                        }
+                    }
+                }
+                repository.autoLockMinutes = 0
+                repository.createVault(passphrase)
+                val failure = assertFailsWith(PwException.ReplacementCommitted::class.java) {
+                    repository.changePassphrase("incoming key")
+                }
+                assertEquals(durabilityFailure, failure.message!!.contains("Durability could not be confirmed"))
+                assertEquals(!durabilityFailure, failure.message!!.contains("vault remains locked"))
+                if (durabilityFailure) {
+                    assertTrue(failure.cause is nu.staldal.pw.vault.VaultException.Write)
+                    assertTrue((failure.cause as nu.staldal.pw.vault.VaultException.Write).primaryCommitted)
+                    assertEquals(listOf(cleanupError), failure.suppressed.toList())
+                } else {
+                    assertTrue(failure.cause === cleanupError)
+                }
+                assertEquals(VaultState.Locked, repository.state.value)
+                assertFailsWith(PwException.Locked::class.java) { repository.add(entry("blocked")) }
+                assertFailsWith(PwException.WrongPassphrase::class.java) { repository.unlock(passphrase) }
+                repository.unlock("incoming key")
+                repository.lock()
+            }
+        }
+    }
+
+    @Test
+    fun onlyCommittedReplacementsInvalidateCredentials() = runTest {
+        var invalidations = 0
+        val repository = repository(onReplacementCommitted = { invalidations++ })
+        repository.autoLockMinutes = 0
+        repository.createVault(passphrase)
+        repository.add(entry("local"))
+        repository.lock()
+        repository.unlock(passphrase)
+        assertEquals(0, invalidations)
+        repository.changePassphrase("incoming key")
+        assertEquals(1, invalidations)
+        assertTrue(repository.state.value is VaultState.Unlocked)
+        assertFailsWith(PwException.WrongPassphrase::class.java) {
+            repository.importVault(ByteArrayInputStream(repository.vaultFile.readBytes()), "wrong")
+        }
+        assertEquals(1, invalidations)
+        repository.importVault(ByteArrayInputStream(repository.vaultFile.readBytes()), "incoming key")
+        assertEquals(2, invalidations)
+        assertTrue(repository.state.value is VaultState.Unlocked)
+        repository.lock()
+    }
+
+    @Test
+    fun cancelledReplacementInvalidatesCredentialsWithoutUiSuccess() = runTest {
+        for (importing in listOf(false, true)) {
+            var invalidations = 0
+            var uiSuccess = false
+            lateinit var operation: kotlinx.coroutines.Job
+            val repository = repository(temp.newFolder(), { invalidations++ }) { file, pass, entries, params ->
+                Vault.storeReplacingKey(file, pass, entries, params)
+                // Cancel the initiating screen after commit, before the
+                // dispatcher can deliver the result to openAfter or the UI.
+                operation.cancel()
+            }
+            repository.autoLockMinutes = 0
+            repository.createVault(passphrase)
+            repository.add(entry("local"))
+            val foreign = File(temp.newFolder(), "foreign.scrypt")
+            Passphrase("incoming key").use {
+                Vault.store(foreign, it, listOf(entry("imported")), ScryptFormat.Params(12, 8, 1))
+            }
+            operation = launch {
+                if (importing) {
+                    foreign.inputStream().use { repository.importVault(it, "incoming key") }
+                } else {
+                    repository.changePassphrase("incoming key")
+                }
+                uiSuccess = true
+            }
+            operation.join()
+            assertTrue(operation.isCancelled)
+            assertFalse(uiSuccess)
+            assertEquals(1, invalidations)
+            assertEquals(VaultState.Locked, repository.state.value)
+            assertFailsWith(PwException.Locked::class.java) { repository.add(entry("blocked")) }
             repository.unlock("incoming key")
             assertEquals(listOf(entry(if (importing) "imported" else "local")), repository.entries())
             repository.lock()

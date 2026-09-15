@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
@@ -19,7 +20,6 @@ import nu.staldal.pw.data.PwException
 import nu.staldal.pw.data.PwRepository
 import nu.staldal.pw.data.SettingsState
 import nu.staldal.pw.data.VaultState
-import nu.staldal.pw.util.BiometricPassphraseStore
 import nu.staldal.pw.util.Clipboard
 import nu.staldal.pw.vault.PasswordEntry
 import nu.staldal.pw.vault.Secret
@@ -33,7 +33,7 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
 
     private val app = application as PwApplication
     private val repository: PwRepository = app.repository
-    val biometrics = BiometricPassphraseStore(application)
+    val biometrics = app.biometrics
 
     val state: StateFlow<VaultState> = repository.state
 
@@ -121,11 +121,10 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 block()
                 onSuccess()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: PwException.ReplacementCommitted) {
-                val wasEnabled = biometrics.isEnabled()
-                biometrics.clear()
-                _message.value = e.message +
-                    if (wasEnabled) " Fingerprint unlock was turned off." else ""
+                _message.value = e.message
             } catch (e: PwException) {
                 _message.value = e.message
             } catch (e: Exception) {

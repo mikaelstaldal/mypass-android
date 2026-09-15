@@ -4,6 +4,7 @@ import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -74,6 +75,13 @@ class PwRepository(
     /** Injectable replacement I/O for testing failures after a primary commit. */
     private val replacementWriter: (File, Passphrase, List<PasswordEntry>, ScryptFormat.Params) -> Unit =
         Vault::storeReplacingKey,
+    /**
+     * Application integration hook for invalidating credentials after a key
+     * replacement commits. Runs synchronously on the writer thread, including
+     * after a committed durability failure, before any cancellable dispatcher
+     * return. Must not prompt or depend on a screen's lifetime.
+     */
+    private val onReplacementCommitted: () -> Unit = {},
 ) {
 
     /** Read by the UI so it can re-render when the vault opens or closes. */
@@ -311,6 +319,11 @@ class PwRepository(
                 openLocked(pass, entries)
                 owned = false
             }
+        } catch (e: CancellationException) {
+            // A dispatcher return may be cancelled after storage committed.
+            // Never retain the old in-memory key for a subsequent edit.
+            if (replacingKey) lock()
+            throw e
         } finally {
             if (owned) pass.close()
         }
@@ -400,17 +413,39 @@ class PwRepository(
         replacingKey: Boolean = false,
     ) {
         val params = ScryptFormat.Params.DEFAULT.copy(logN = scryptLogN)
+        var committed = false
+        var replacementFailure: PwException.ReplacementCommitted? = null
         try {
             if (replacingKey) replacementWriter(file, pass, entries, params)
             else Vault.store(file, pass, entries, params)
+            committed = replacingKey
         } catch (e: VaultException) {
             // A replacement may have committed before a durability error.
             // Do not let a subsequent edit write with the previous key.
             if (replacingKey && e is VaultException.Write && e.primaryCommitted) {
+                committed = true
                 lock()
-                throw PwException.ReplacementCommitted(e)
+                val failure = PwException.ReplacementCommitted(e)
+                replacementFailure = failure
+                throw failure
             }
             throw mapVaultException(file, e)
+        } finally {
+            if (committed) {
+                try {
+                    onReplacementCommitted()
+                } catch (e: Throwable) {
+                    // Integration cleanup must not leave the old key usable
+                    // or make a committed replacement look like a failed write.
+                    lock()
+                    val failure = replacementFailure
+                    if (failure != null) {
+                        failure.addSuppressed(e)
+                        throw failure
+                    }
+                    throw PwException.ReplacementCommitted(e, durabilityUnconfirmed = false)
+                }
+            }
         }
     }
 
