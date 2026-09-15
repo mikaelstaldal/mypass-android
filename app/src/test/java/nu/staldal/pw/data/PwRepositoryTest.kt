@@ -52,12 +52,17 @@ class PwRepositoryTest {
      * logN is lowered because the default N=2^17 takes seconds per write, and
      * these tests do a lot of them.
      */
-    private fun TestScope.repository() =
+    private fun TestScope.repository(
+        vaultDir: File = temp.root,
+        replacementWriter: (File, Passphrase, List<PasswordEntry>, ScryptFormat.Params) -> Unit =
+            Vault::storeReplacingKey,
+    ) =
         PwRepository(
-            temp.root,
+            vaultDir,
             { testScheduler.currentTime },
             this,
             StandardTestDispatcher(testScheduler),
+            replacementWriter,
         ).also { it.scryptLogN = 12 }
 
     private fun entry(name: String, password: String = "pw-$name", url: String? = null) =
@@ -332,12 +337,115 @@ class PwRepositoryTest {
     }
 
     @Test
+    fun replacementFailuresPreserveStateUntilPrimaryCommits() = runTest {
+        for (step in Vault.ReplacementStep.entries) {
+            val repository = repository(temp.newFolder()) { file, pass, entries, params ->
+                Vault.storeReplacingKey(file, pass, entries, params) {
+                    if (it == step) throw java.io.IOException("interrupted")
+                }
+            }
+            repository.createVault(passphrase)
+            repository.add(entry("local"))
+            val committed = step >= Vault.ReplacementStep.PRIMARY_RENAMED
+            assertFailsWith(
+                if (committed) PwException.ReplacementCommitted::class.java else PwException.Io::class.java,
+            ) { repository.changePassphrase("new key") }
+            if (committed) {
+                assertTrue(repository.state.value is VaultState.Locked)
+                assertFailsWith(PwException.Locked::class.java) { repository.add(entry("blocked")) }
+                repository.unlock("new key")
+            } else {
+                assertEquals(listOf(entry("local")), repository.entries())
+                // A subsequent edit must still use the original passphrase.
+                repository.add(entry("after-failure"))
+                Passphrase(passphrase).use {
+                    assertEquals(
+                        listOf(entry("local"), entry("after-failure")),
+                        Vault.load(repository.vaultFile, it),
+                    )
+                }
+            }
+            repository.lock()
+        }
+    }
+
+    @Test
+    fun lockDuringReplacementKeepsVaultLockedButReportsIncomingKey() = runTest {
+        for (importing in listOf(false, true)) {
+            lateinit var repository: PwRepository
+            repository = repository(temp.newFolder()) { file, pass, entries, params ->
+                Vault.storeReplacingKey(file, pass, entries, params)
+                repository.lock()
+            }
+            repository.createVault(passphrase)
+            repository.add(entry("local"))
+            assertFailsWith(PwException.ReplacementCommitted::class.java) {
+                if (importing) {
+                    val foreign = File(temp.newFolder(), "foreign.scrypt")
+                    Passphrase("incoming key").use {
+                        Vault.store(foreign, it, listOf(entry("imported")), ScryptFormat.Params(logN = 12, r = 8, p = 1))
+                    }
+                    foreign.inputStream().use { repository.importVault(it, "incoming key") }
+                } else {
+                    repository.changePassphrase("incoming key")
+                }
+            }
+            assertTrue(repository.state.value is VaultState.Locked)
+            assertFailsWith(PwException.WrongPassphrase::class.java) { repository.unlock(passphrase) }
+            repository.unlock("incoming key")
+            assertEquals(listOf(entry(if (importing) "imported" else "local")), repository.entries())
+            repository.lock()
+        }
+    }
+
+    @Test
+    fun importFailureAfterCommitLocksAndRequiresIncomingPassphrase() = runTest {
+        val repository = repository { file, pass, entries, params ->
+            Vault.storeReplacingKey(file, pass, entries, params) {
+                if (it == Vault.ReplacementStep.PRIMARY_RENAMED) throw java.io.IOException("interrupted")
+            }
+        }
+        repository.createVault(passphrase)
+        repository.add(entry("local"))
+        val foreign = File(temp.root, "foreign.scrypt")
+        Passphrase("incoming key").use {
+            Vault.store(foreign, it, listOf(entry("imported")), ScryptFormat.Params(logN = 12, r = 8, p = 1))
+        }
+        assertFailsWith(PwException.ReplacementCommitted::class.java) {
+            foreign.inputStream().use { repository.importVault(it, "incoming key") }
+        }
+        assertTrue(repository.state.value is VaultState.Locked)
+        assertFailsWith(PwException.WrongPassphrase::class.java) { repository.unlock(passphrase) }
+        repository.unlock("incoming key")
+        assertEquals(listOf(entry("imported")), repository.entries())
+    }
+
+    @Test
+    fun encryptionFailureDuringRotationLeavesCurrentVaultUnlocked() = runTest {
+        val repository = repository()
+        repository.createVault(passphrase)
+        repository.scryptLogN = 0
+        assertFailsWith(PwException.CorruptVault::class.java) { repository.changePassphrase("new key") }
+        assertTrue(repository.state.value is VaultState.Unlocked)
+        Passphrase(passphrase).use { assertEquals(emptyList<PasswordEntry>(), Vault.load(repository.vaultFile, it)) }
+    }
+
+    @Test
     fun changePassphraseReEncryptsWithoutTouchingTheEntries() = runTest {
         val repository = repository()
         repository.createVault(passphrase)
         repository.add(entry("a"))
+        // Residue from an interrupted ordinary write must not survive rotation.
+        repository.vaultFile.copyTo(Vault.tempFile(repository.vaultFile))
         repository.changePassphrase("a different passphrase")
+        assertFalse(Vault.tempFile(repository.vaultFile).exists())
 
+        Passphrase("a different passphrase").use {
+            assertEquals(listOf(entry("a")), Vault.load(Vault.backupFile(repository.vaultFile), it))
+        }
+        assertThrows(nu.staldal.pw.vault.VaultException.Format::class.java) {
+            Passphrase(passphrase).use { Vault.load(Vault.backupFile(repository.vaultFile), it) }
+        }
         repository.lock()
         assertFailsWith(PwException.WrongPassphrase::class.java) { repository.unlock(passphrase) }
         repository.unlock("a different passphrase")
@@ -371,12 +479,20 @@ class PwRepositoryTest {
 
         repository.importVault(foreign.inputStream(), "other passphrase")
         assertEquals(listOf("imported"), repository.entries().map { it.name })
-        // The previous vault is still there as the backup.
+        // Import retains only a snapshot protected by the incoming key.
         assertEquals(
-            listOf("local"),
-            Vault.load(Vault.backupFile(repository.vaultFile), Passphrase(passphrase))
+            listOf("imported"),
+            Vault.load(Vault.backupFile(repository.vaultFile), Passphrase("other passphrase"))
                 .map { it.name },
         )
+        for (retained in listOf(repository.vaultFile, Vault.backupFile(repository.vaultFile))) {
+            assertThrows(nu.staldal.pw.vault.VaultException.Format::class.java) {
+                Passphrase(passphrase).use { Vault.load(retained, it) }
+            }
+            Passphrase("other passphrase").use {
+                assertEquals(listOf("imported"), Vault.load(retained, it).map { entry -> entry.name })
+            }
+        }
     }
 
     @Test

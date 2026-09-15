@@ -14,7 +14,7 @@ sealed class VaultException(message: String, cause: Throwable? = null) :
     class Read(val file: File, cause: Throwable) :
         VaultException("cannot read $file: ${cause.message}", cause)
 
-    class Write(val file: File, cause: Throwable) :
+    class Write(val file: File, cause: Throwable, val primaryCommitted: Boolean = false) :
         VaultException("cannot write $file: ${cause.message}", cause)
 
     class Format(cause: ScryptFormatException) :

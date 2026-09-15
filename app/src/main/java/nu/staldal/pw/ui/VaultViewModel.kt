@@ -114,6 +114,11 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 block()
                 onSuccess()
+            } catch (e: PwException.ReplacementCommitted) {
+                val wasEnabled = biometrics.isEnabled()
+                biometrics.clear()
+                _message.value = e.message +
+                    if (wasEnabled) " Fingerprint unlock was turned off." else ""
             } catch (e: PwException) {
                 _message.value = e.message
             } catch (e: Exception) {

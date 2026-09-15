@@ -30,6 +30,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,6 +66,10 @@ fun SettingsScreen(
     val activity = context as? FragmentActivity
     var changePassphrase by remember { mutableStateOf(false) }
     var biometricsEnabled by remember { mutableStateOf(vaultViewModel.biometrics.isEnabled()) }
+    val busy by vaultViewModel.busy.collectAsState()
+    LaunchedEffect(busy) {
+        if (!busy) biometricsEnabled = vaultViewModel.biometrics.isEnabled()
+    }
     var enrollPassphrase by remember { mutableStateOf<String?>(null) }
 
     val autofillManager = remember { context.getSystemService(AutofillManager::class.java) }
@@ -270,8 +276,8 @@ fun SettingsScreen(
             }
             Text(
                 "For re-syncing from a desktop. The file is verified before " +
-                    "anything is written, and the vault it replaces is kept as " +
-                    "pw.scrypt.bak.",
+                    "anything is written. The local backup also becomes the imported vault; " +
+                    "previous local entries are discarded. Export them first if needed.",
                 style = MaterialTheme.typography.bodySmall,
             )
             Spacer(Modifier.height(24.dp))
@@ -391,8 +397,8 @@ private fun ChangePassphraseDialog(onDismiss: () -> Unit, onConfirm: (String) ->
         text = {
             Column {
                 Text(
-                    "The vault is re-encrypted. The old passphrase stops working, " +
-                        "including for the backup file written by this change."
+                    "The vault and local backup are re-encrypted under the new passphrase. " +
+                        "Previously exported copies still open with their original passphrase."
                 )
                 Spacer(Modifier.height(12.dp))
                 SecretField(passphrase, { passphrase = it }, "New passphrase")

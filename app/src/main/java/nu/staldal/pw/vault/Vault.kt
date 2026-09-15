@@ -3,6 +3,8 @@ package nu.staldal.pw.vault
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.nio.channels.FileChannel
+import java.nio.file.StandardOpenOption
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -110,8 +112,8 @@ object Vault {
      * filesystems — and its name is deterministic, so the same three paths
      * (`<file>`, `<file>.tmp`, `<file>.bak`) are all that is ever touched.
      *
-     * The desktop also fsyncs the *directory* after the rename, which no Java
-     * or Android API exposes. A power loss in the moment between the rename
+     * Unlike [storeReplacingKey], this ordinary write path does not fsync
+     * the directory after the rename. A power loss in the moment between the rename
      * and the filesystem's own flush can therefore still lose the rename — but
      * not corrupt anything: what survives is the complete old vault.
      */
@@ -156,6 +158,84 @@ object Vault {
         } catch (e: SecurityException) {
             tmp.delete()
             throw VaultException.Write(file, IOException(e))
+        }
+    }
+
+    /**
+     * Rotation/import policy: retain a snapshot of the incoming vault, never
+     * ciphertext protected by the previous key. Commit the backup first, so
+     * an interruption always leaves the old primary or the complete new one.
+     * Both renames are followed by a directory fsync before reporting success.
+     */
+    fun storeReplacingKey(
+        file: File,
+        passphrase: Passphrase,
+        entries: List<PasswordEntry>,
+        params: ScryptFormat.Params,
+    ) = storeReplacingKey(file, passphrase, entries, params) {}
+
+    internal enum class ReplacementStep {
+        TEMP_SYNCED, BACKUP_RENAMED, BACKUP_SYNCED,
+        PRIMARY_TEMP_SYNCED, PRIMARY_RENAMED, PRIMARY_SYNCED,
+    }
+
+    // The callback lets JVM tests interrupt each commit boundary without
+    // replacing real filesystem operations with mocks.
+    internal fun storeReplacingKey(
+        file: File,
+        passphrase: Passphrase,
+        entries: List<PasswordEntry>,
+        params: ScryptFormat.Params,
+        afterStep: (ReplacementStep) -> Unit,
+    ) {
+        val plaintext = toJson(entries).toByteArray(Charsets.UTF_8)
+        val ciphertext = try {
+            ScryptFormat.encrypt(plaintext, passphrase.expose(), params)
+        } catch (e: ScryptFormatException) {
+            throw VaultException.Format(e)
+        } finally {
+            plaintext.fill(0)
+        }
+        val tmp = tempFile(file)
+        val bak = backupFile(file)
+        var primaryCommitted = false
+        fun stage() {
+            if (tmp.exists() && !tmp.delete()) throw IOException("cannot remove $tmp")
+            if (!tmp.createNewFile()) throw IOException("cannot create $tmp")
+            restrictPermissions(tmp)
+            FileOutputStream(tmp).use { out ->
+                out.write(ciphertext)
+                out.fd.sync()
+            }
+        }
+        fun syncDirectory() {
+            FileChannel.open(
+                (file.absoluteFile.parentFile ?: throw IOException("missing vault directory")).toPath(),
+                StandardOpenOption.READ,
+            ).use {
+                it.force(true)
+            }
+        }
+        try {
+            stage()
+            afterStep(ReplacementStep.TEMP_SYNCED)
+            if (!tmp.renameTo(bak)) throw IOException("cannot rename $tmp to $bak")
+            afterStep(ReplacementStep.BACKUP_RENAMED)
+            syncDirectory()
+            afterStep(ReplacementStep.BACKUP_SYNCED)
+            stage()
+            afterStep(ReplacementStep.PRIMARY_TEMP_SYNCED)
+            if (!tmp.renameTo(file)) throw IOException("cannot rename $tmp to $file")
+            primaryCommitted = true
+            afterStep(ReplacementStep.PRIMARY_RENAMED)
+            syncDirectory()
+            afterStep(ReplacementStep.PRIMARY_SYNCED)
+        } catch (e: IOException) {
+            tmp.delete()
+            throw VaultException.Write(file, e, primaryCommitted)
+        } catch (e: SecurityException) {
+            tmp.delete()
+            throw VaultException.Write(file, IOException(e), primaryCommitted)
         }
     }
 

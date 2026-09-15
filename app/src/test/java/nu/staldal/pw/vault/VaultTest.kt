@@ -30,6 +30,44 @@ class VaultTest {
     private fun vaultFile() = File(temp.root, "pw.scrypt")
 
     @Test
+    fun replacementSurvivesEveryCommitBoundaryAndCanBeRetried() {
+        val old = listOf(entry("old", "old-secret"))
+        val incoming = listOf(entry("incoming", "new-secret"))
+        for (step in Vault.ReplacementStep.entries) {
+            val file = File(temp.newFolder(), "pw.scrypt")
+            passphrase().use { Vault.store(file, it, old, testParams) }
+            passphrase().use { Vault.store(file, it, old, testParams) }
+            Passphrase("new key").use { pass ->
+                val failure = assertThrows(VaultException.Write::class.java) {
+                    Vault.storeReplacingKey(file, pass, incoming, testParams) {
+                        if (it == step) throw java.io.IOException("interrupted")
+                    }
+                }
+                val primaryCommitted = step >= Vault.ReplacementStep.PRIMARY_RENAMED
+                assertEquals(primaryCommitted, failure.primaryCommitted)
+                Passphrase(if (primaryCommitted) "new key" else passphraseText).use {
+                    assertEquals(if (primaryCommitted) incoming else old, Vault.load(file, it))
+                }
+                if (step >= Vault.ReplacementStep.BACKUP_RENAMED) {
+                    assertEquals(incoming, Vault.load(Vault.backupFile(file), pass))
+                }
+                // Retrying must remove every retained old-key version.
+                Vault.storeReplacingKey(file, pass, incoming, testParams)
+                for (retained in listOf(file, Vault.backupFile(file))) {
+                    assertEquals(incoming, Vault.load(retained, pass))
+                    passphrase().use { previous ->
+                        val error = assertThrows(VaultException.Format::class.java) {
+                            Vault.load(retained, previous)
+                        }
+                        assertTrue(error.cause is ScryptFormatException.WrongPassphrase)
+                    }
+                }
+                assertFalse(Vault.tempFile(file).exists())
+            }
+        }
+    }
+
+    @Test
     fun roundTrip() {
         val file = vaultFile()
         val entries = listOf(entry("a", "pw-a"), entry("b", "pw-b"))

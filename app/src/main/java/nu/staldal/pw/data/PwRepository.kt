@@ -71,6 +71,9 @@ class PwRepository(
      * same scheduler as the timer and stay deterministic.
      */
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    /** Injectable replacement I/O for testing failures after a primary commit. */
+    private val replacementWriter: (File, Passphrase, List<PasswordEntry>, ScryptFormat.Params) -> Unit =
+        Vault::storeReplacingKey,
 ) {
 
     /** Read by the UI so it can re-render when the vault opens or closes. */
@@ -209,8 +212,8 @@ class PwRepository(
      */
     suspend fun changePassphrase(newPassphrase: String) = mutex.withLock {
         val entries = requireUnlocked()
-        openAfter(Passphrase(newPassphrase)) { pass ->
-            withContext(ioDispatcher) { writeVault(vaultFile, pass, entries) }
+        openAfter(Passphrase(newPassphrase), replacingKey = true) { pass ->
+            withContext(ioDispatcher) { writeVault(vaultFile, pass, entries, replacingKey = true) }
             entries
         }
     }
@@ -242,8 +245,8 @@ class PwRepository(
      * The import is verified before it lands: the bytes must parse as the
      * scrypt format and decrypt to a usable vault under [importPassphrase], so
      * a mistyped passphrase or a truncated copy is refused while the existing
-     * vault is still there. It is then written through the ordinary atomic
-     * path, which keeps the previous vault as `pw.scrypt.bak`.
+     * vault is still there. The local backup is replaced with a snapshot of
+     * the imported vault under its passphrase before replacing the primary.
      */
     suspend fun importVault(input: InputStream, importPassphrase: String) = mutex.withLock {
         val data = try {
@@ -251,7 +254,7 @@ class PwRepository(
         } catch (e: IOException) {
             throw PwException.Io(VaultException.Read(vaultFile, e))
         }
-        openAfter(Passphrase(importPassphrase)) { pass ->
+        openAfter(Passphrase(importPassphrase), replacingKey = true) { pass ->
             val entries = try {
                 val plaintext = withContext(ioDispatcher) {
                     ScryptFormat.decrypt(data, pass.expose())
@@ -269,7 +272,7 @@ class PwRepository(
             vaultDir.mkdirs()
             // Re-encrypt rather than copying the bytes, so the vault on this
             // device always uses this device's configured KDF cost.
-            withContext(ioDispatcher) { writeVault(vaultFile, pass, entries) }
+            withContext(ioDispatcher) { writeVault(vaultFile, pass, entries, replacingKey = true) }
             entries
         }
     }
@@ -284,6 +287,7 @@ class PwRepository(
      */
     private suspend fun openAfter(
         pass: Passphrase,
+        replacingKey: Boolean = false,
         produce: suspend (Passphrase) -> List<PasswordEntry>,
     ) {
         var owned = true
@@ -291,7 +295,12 @@ class PwRepository(
             val epoch = synchronized(stateLock) { lockEpoch }
             val entries = produce(pass)
             synchronized(stateLock) {
-                if (lockEpoch != epoch) throw PwException.Locked()
+                if (lockEpoch != epoch) {
+                    // The replacement write returned successfully, but a lock
+                    // must still win. Report the committed key to the UI.
+                    if (replacingKey) throw PwException.ReplacementCommitted(null, durabilityUnconfirmed = false)
+                    throw PwException.Locked()
+                }
                 openLocked(pass, entries)
                 owned = false
             }
@@ -377,11 +386,23 @@ class PwRepository(
         }
     }
 
-    private fun writeVault(file: File, pass: Passphrase, entries: List<PasswordEntry>) {
+    private fun writeVault(
+        file: File,
+        pass: Passphrase,
+        entries: List<PasswordEntry>,
+        replacingKey: Boolean = false,
+    ) {
         val params = ScryptFormat.Params.DEFAULT.copy(logN = scryptLogN)
         try {
-            Vault.store(file, pass, entries, params)
+            if (replacingKey) replacementWriter(file, pass, entries, params)
+            else Vault.store(file, pass, entries, params)
         } catch (e: VaultException) {
+            // A replacement may have committed before a durability error.
+            // Do not let a subsequent edit write with the previous key.
+            if (replacingKey && e is VaultException.Write && e.primaryCommitted) {
+                lock()
+                throw PwException.ReplacementCommitted(e)
+            }
             throw mapVaultException(file, e)
         }
     }

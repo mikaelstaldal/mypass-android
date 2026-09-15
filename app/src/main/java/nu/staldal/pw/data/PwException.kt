@@ -25,6 +25,13 @@ sealed class PwException(message: String, cause: Throwable? = null) : Exception(
 
     class Io(cause: VaultException) : PwException(cause.message ?: "I/O error", cause)
 
+    class ReplacementCommitted(cause: Throwable?, durabilityUnconfirmed: Boolean = true) : PwException(
+        "The vault was replaced and uses the incoming passphrase. " +
+            (if (durabilityUnconfirmed) "Durability could not be confirmed; unlock with that passphrase and retry."
+             else "The vault remains locked; unlock with that passphrase."),
+        cause,
+    )
+
     class CorruptVault(val file: File, cause: VaultException) :
         PwException("cannot use vault $file: ${cause.message}", cause)
 
