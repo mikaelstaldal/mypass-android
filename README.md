@@ -2,8 +2,8 @@
 
 A password manager for Android that keeps your passwords in a single
 encrypted file, using the same **standard scrypt encrypted-data format** as
-[`pw`](../pw), the command line password manager it is the companion of. The
-same `pw.scrypt` file works on both: copy it across and every entry, username,
+[`pw`](https://github.com/mikaelstaldal/pw), the command line password manager it is the companion of. 
+The same `pw.scrypt` file works on both: copy it across and every entry, username,
 `url` and `realm` is there, byte for byte.
 
 All cryptography happens in-process. Nothing is uploaded anywhere; the app
@@ -22,17 +22,17 @@ No Gradle wrapper — uses the system `gradle` command. Point `sdk.dir` in
 
 ## What it does
 
-| Screen | The `pw` command it replaces |
-|---|---|
-| Unlock / Create vault | `pw init` |
-| Entry list, with search | `pw list [PATTERN]` |
-| Entry detail — copy username, copy or reveal password | `pw get <name> [--show]` |
-| Add entry | `pw add <name> [username] …` |
-| Edit entry (with "keep the existing password") | `pw update <name> … [--keep-password]` |
-| Remove entry, after confirmation | `pw remove <name>` |
-| Generate password | `pw generate` |
-| Settings → Export decrypted JSON | `pw export` |
-| Settings → Use pw for autofill | `pw install-browser` |
+| Screen                                                | The `pw` command it replaces           |
+|-------------------------------------------------------|----------------------------------------|
+| Unlock / Create vault                                 | `pw init`                              |
+| Entry list, with search                               | `pw list [PATTERN]`                    |
+| Entry detail — copy username, copy or reveal password | `pw get <name> [--show]`               |
+| Add entry                                             | `pw add <name> [username] …`           |
+| Edit entry (with "keep the existing password")        | `pw update <name> … [--keep-password]` |
+| Remove entry, after confirmation                      | `pw remove <name>`                     |
+| Generate password                                     | `pw generate`                          |
+| Settings → Export decrypted JSON                      | `pw export`                            |
+| Settings → Use pw for autofill                        | `pw install-browser`                   |
 
 Plus what a phone needs and a terminal does not: an auto-lock timer, optional
 fingerprint unlock, and importing and exporting the vault file through the
