@@ -66,7 +66,14 @@ the two can be read side by side:
    are split out of the Android-bound walker for the same reason:
    `FieldClassifier` (what a field is) and `FormSelector` (which pair of fields
    is the form to answer for). Both are free of Android types; keep them that
-   way. `AutofillStructureParser` is only the tree walk and origin inheritance.
+   way. Which box is the username is desktop pw's rule, not an Android
+   invention: a field that identifies itself, else the nearest text input
+   *preceding* the password in the same form — `webextension/fill.js`'s
+   `findUsernameField`, which is why `FieldKind.TEXT` exists and why
+   `FormSelector` decides it rather than `FieldClassifier`. Name-matching alone
+   cannot see a username box rendered as a bare `<input type="text">` with
+   `autocomplete="off"`, which is common. When that rule changes there, change
+   it here. `AutofillStructureParser` is only the tree walk and origin inheritance.
    `FillDiagnostics` is the opt-in record of *why* a request produced no offer,
    which every refusal here needs because the framework gives a service no way
    to explain itself. It is Android-free and unit-tested; keep it that way,

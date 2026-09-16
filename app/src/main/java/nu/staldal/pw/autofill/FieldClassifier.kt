@@ -4,8 +4,15 @@ import android.text.InputType
 import android.view.View
 import java.util.Locale
 
-/** What a field in a login form is, as far as pw cares. */
-enum class FieldKind { USERNAME, PASSWORD }
+/**
+ * What a field in a login form is, as far as pw cares.
+ *
+ * [TEXT] is the "it could be, and the page did not say" case: an `<input>`
+ * that can hold a username but declares nothing that identifies it as one.
+ * Which of those — if any — is the username is a question about the field's
+ * position relative to the password field, so [FormSelector] answers it.
+ */
+enum class FieldKind { USERNAME, PASSWORD, TEXT }
 
 /**
  * Everything one view says about itself that bears on what kind of field it is,
@@ -26,7 +33,8 @@ data class FieldSignals(
 /**
  * Decides what a field is, in decreasing order of how much the page had to say
  * about it: the autofill hints it declares, then the HTML attributes the
- * browser passed through, then the input type Android inferred.
+ * browser passed through, then the input type Android inferred, and last —
+ * saying only "this can hold text" — the bare existence of a text `<input>`.
  *
  * Getting this wrong is a usability failure, never a security one — the entry
  * released is decided by the site, not by which box the text lands in — so the
@@ -35,7 +43,7 @@ data class FieldSignals(
 object FieldClassifier {
 
     fun classify(signals: FieldSignals): FieldKind? =
-        fromHints(signals) ?: fromHtml(signals) ?: fromInputType(signals)
+        fromHints(signals) ?: fromHtml(signals) ?: fromInputType(signals) ?: textInput(signals)
 
     private fun fromHints(signals: FieldSignals): FieldKind? {
         for (hint in signals.autofillHints) {
@@ -59,7 +67,24 @@ object FieldClassifier {
             attributes["name"],
             attributes["id"],
         ).joinToString(" ").lowercase(Locale.ROOT)
-        return if (USERNAME_WORDS.any { it in identity }) FieldKind.USERNAME else null
+        if (USERNAME_WORDS.any { it in identity }) return FieldKind.USERNAME
+        // An email box is a username box. This is the same fact that
+        // TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS is trusted for below, declared
+        // by the page rather than inferred by Android — and browsers do not
+        // populate the input type for web fields at all, so without this the
+        // declared form of it went unused.
+        return if (type == "email") FieldKind.USERNAME else null
+    }
+
+    /**
+     * A text `<input>` that said nothing about itself. Last resort, and only
+     * for web fields: it is the desktop's rule that decides whether one of
+     * these is the username, and the desktop only ever looks at a page.
+     */
+    private fun textInput(signals: FieldSignals): FieldKind? {
+        if (!signals.htmlTag.equals("input", ignoreCase = true)) return null
+        val type = signals.htmlAttributes["type"]?.lowercase(Locale.ROOT)
+        return if (type == null || type in TEXTUAL_INPUT_TYPES) FieldKind.TEXT else null
     }
 
     private fun fromInputType(signals: FieldSignals): FieldKind? {
@@ -100,8 +125,13 @@ object FieldClassifier {
         "email",
     ).mapTo(HashSet()) { it.lowercase(Locale.ROOT) }
 
-    /** `<input>` types that can hold a username. An absent type means `text`. */
-    private val TEXTUAL_INPUT_TYPES = setOf("text", "email", "tel", "url", "")
+    /**
+     * `<input>` types that can hold a username. An absent type means `text`.
+     * The desktop's selector is the same list — `text`, `email`, `tel`,
+     * `username`, no type — plus `url`, which it omits and which is harmless
+     * here because position, not type, is what promotes one of these.
+     */
+    private val TEXTUAL_INPUT_TYPES = setOf("text", "email", "tel", "url", "username", "")
 
     private val USERNAME_WORDS = listOf(
         "username", "user_name", "user-name", "userid", "user_id",

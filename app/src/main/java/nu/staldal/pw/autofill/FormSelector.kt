@@ -75,6 +75,13 @@ data class FormDiagnosis(
  * The origin then comes from the chosen password field, and a username field
  * from a *different* origin is dropped rather than filled: a cross-origin
  * iframe must not collect the outer page's credential.
+ *
+ * When nothing on the page identifies a username field, the username is the
+ * nearest text input *preceding* the password inside the same form. That is
+ * desktop pw's rule verbatim (`webextension/fill.js` `findUsernameField`), and
+ * it is what makes a form work whose username box declares nothing at all —
+ * `<input type="text">` with no name, no id and `autocomplete="off"` is
+ * common, and no amount of name-matching will ever recognise it.
  */
 object FormSelector {
 
@@ -111,9 +118,16 @@ object FormSelector {
                 },
                 focused,
             )
-        // Do not guess among multiple username fields (e.g. registration).
-        val username = if (focused.kind == FieldKind.USERNAME) focused else
-            scoped.singleOrNull { it.kind == FieldKind.USERNAME }
+        val named = scoped.filter { it.kind == FieldKind.USERNAME }
+        val username = when {
+            // A field the user tapped needs no inference: they said where the
+            // username goes, and a password is never it.
+            focused.kind != FieldKind.PASSWORD -> focused
+            named.size == 1 -> named.single()
+            // Do not guess among multiple username fields (e.g. registration).
+            named.isNotEmpty() -> null
+            else -> nearestPrecedingText(scoped, password)
+        }
 
         return SelectedForm(
             usernameId = username?.id,
@@ -125,4 +139,18 @@ object FormSelector {
             diagnosis = FormDiagnosis(null, seen, focused.scheme, focused.domain),
         )
     }
+
+    /**
+     * The last text input before [password] in the same scope — "nearest
+     * preceding", in the tree order the candidates were collected in, which is
+     * document order for a browser's structure.
+     *
+     * Only ever reached when the page identified no username field at all, so
+     * the alternative it is being weighed against is filling nothing.
+     */
+    private fun <T> nearestPrecedingText(
+        scoped: List<FieldCandidate<T>>,
+        password: FieldCandidate<T>,
+    ): FieldCandidate<T>? = scoped.takeWhile { it !== password }
+        .lastOrNull { it.kind == FieldKind.TEXT }
 }

@@ -181,6 +181,19 @@ same rules — which are stricter than most Android password managers':
 - **The service never writes the vault.** A save offer hands off to a
   confirmation screen in the app, with the vault open and the entry on screen
   before anything is stored.
+- **Which box is the username** is decided the way the desktop decides it. A
+  field that identifies itself — an autofill hint, an `autocomplete`, `name` or
+  `id` that names a user, or `type="email"` — is the username. When nothing on
+  the page identifies one, it is the nearest text input *preceding* the
+  password field inside the same form, which is desktop pw's rule verbatim
+  (`webextension/fill.js`). Plenty of real login pages render their username
+  box as a bare `<input type="text">` with no name, no id and
+  `autocomplete="off"`, and no amount of name-matching recognises those.
+  Getting this wrong fills the wrong box, which is a nuisance rather than a
+  disclosure: what the *site* receives is decided by the origin, never by which
+  field the text lands in. Several *identified* username fields are still left
+  alone rather than guessed among, and a save offer names the username field
+  only as optional — the required field is the password.
 
 When the vault is locked, a fill request shows a single **Unlock pw** entry
 instead of a password. Tapping it opens pw's own passphrase screen — outside
@@ -331,7 +344,7 @@ app unchanged.
 | Phishing domain (`github.com.evil.example`) | Suffix matching at label boundaries bounded by the Public Suffix List — only `evil.example`'s own entries can match. |
 | A page provoking a passphrase prompt | The prompt is pw's own activity, opened by the framework only after you tap the suggestion. A page can put the *suggestion* in front of you; it cannot type on it. |
 | A compromised browser reading the vault | The browser never receives the vault, the passphrase, or any entry it did not match — only the username and password of the entry you picked, for the field you picked it in. |
-| Adjacent forms or frames causing the wrong account to be filled | Exactly one classified field must be focused. On Android 9 (API 28), this requires the browser to report the node focus flag; browsers that omit it receive no offer. Android 10+ uses the framework focused ID. Pairing requires the same eligible origin and enclosing HTML form, or immediate parent container when no form is reported. Multiple password fields (including password confirmation on registration forms) are refused when the username is focused; focusing the intended password still works. Ambiguous usernames are omitted. Missing container metadata permits only a focused password, without a username. These boundaries depend on the form/container tree the browser reports; a flattened tree cannot distinguish unreported forms. |
+| Adjacent forms or frames causing the wrong account to be filled | Exactly one candidate field must be focused. On Android 9 (API 28), this requires the browser to report the node focus flag; browsers that omit it receive no offer. Android 10+ uses the framework focused ID. Pairing requires the same eligible origin and enclosing HTML form, or immediate parent container when no form is reported. Multiple password fields (including password confirmation on registration forms) are refused when the username is focused; focusing the intended password still works. Ambiguous usernames are omitted. Missing container metadata permits only a focused password, without a username. A username field that identifies itself outranks position; when none does, the nearest text input preceding the password in the same form is used, never one after it and never one in another form or origin. These boundaries depend on the form/container tree the browser reports; a flattened tree cannot distinguish unreported forms. |
 | A cross-origin iframe collecting the outer page's credential | The origin is taken from the password field's own node, not from the page as a whole, and a username field on a different origin is dropped rather than filled. A new origin declaration replaces both scheme and domain, including missing components. |
 | Another app reading the vault file | It lives in the app's private storage, owner-only, and is never backed up to the cloud or transferred to a new device (`backup_rules.xml`). |
 | Screenshots, the recents thumbnail, screen recording | Every pw window sets `FLAG_SECURE`. |

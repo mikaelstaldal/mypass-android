@@ -139,6 +139,74 @@ class FormSelectorTest {
         assertEquals("p1", FormSelector.select(fields.map { it.copy(focused = false) }, "p1").passwordId)
     }
 
+    /**
+     * Desktop pw's rule (`webextension/fill.js` `findUsernameField`): the
+     * nearest text input preceding the password in the same form, used only
+     * when the page identified no username field at all.
+     */
+    @Test fun anUnidentifiedTextFieldBeforeThePasswordIsTheUsername() {
+        val form = FormSelector.select(listOf(field("t", FieldKind.TEXT),
+            field("p", FieldKind.PASSWORD, true)))
+        assertEquals("t", form.usernameId)
+        assertEquals("p", form.passwordId)
+    }
+
+    @Test fun theNearestPrecedingTextFieldWins() {
+        val form = FormSelector.select(listOf(field("far", FieldKind.TEXT),
+            field("near", FieldKind.TEXT), field("p", FieldKind.PASSWORD, true)))
+        assertEquals("near", form.usernameId)
+    }
+
+    @Test fun aTextFieldAfterThePasswordIsNotTheUsername() {
+        val form = FormSelector.select(listOf(field("p", FieldKind.PASSWORD, true),
+            field("t", FieldKind.TEXT)))
+        assertNull(form.usernameId)
+        assertEquals("p", form.passwordId)
+    }
+
+    @Test fun anIdentifiedUsernameOutranksPosition() {
+        val form = FormSelector.select(listOf(field("t", FieldKind.TEXT),
+            field("u", FieldKind.USERNAME), field("p", FieldKind.PASSWORD, true)))
+        assertEquals("u", form.usernameId)
+    }
+
+    /** Position does not rescue what the "do not guess" rule refused. */
+    @Test fun ambiguousUsernamesAreStillOmittedRatherThanInferred() {
+        val form = FormSelector.select(listOf(field("t", FieldKind.TEXT),
+            field("u1", FieldKind.USERNAME), field("u2", FieldKind.USERNAME),
+            field("p", FieldKind.PASSWORD, true)))
+        assertNull(form.usernameId)
+        assertEquals("p", form.passwordId)
+    }
+
+    @Test fun positionNeverCrossesAFormOrAnOrigin() {
+        for (text in listOf(field("t", FieldKind.TEXT, container = "other"),
+            field("t", FieldKind.TEXT, domain = "evil.example"),
+            field("t", FieldKind.TEXT, scheme = "http"))) {
+            val form = FormSelector.select(listOf(text, field("p", FieldKind.PASSWORD, true)))
+            assertNull(form.usernameId)
+            assertEquals("p", form.passwordId)
+        }
+    }
+
+    /**
+     * The NO_FOCUSED_FIELD case: tapping a username box the page says nothing
+     * about must answer for its form, not refuse.
+     */
+    @Test fun focusingAnUnidentifiedTextFieldSelectsItsForm() {
+        val form = FormSelector.select(listOf(field("t", FieldKind.TEXT, true),
+            field("p", FieldKind.PASSWORD)))
+        assertEquals("t", form.usernameId)
+        assertEquals("p", form.passwordId)
+        assertNull(form.diagnosis.refusal)
+    }
+
+    @Test fun focusingATextFieldWithNoPasswordInItsFormIsStillRefused() {
+        assertRefused(FormRefusal.NO_PASSWORD_FIELD,
+            listOf(field("t", FieldKind.TEXT, true, "search-form"),
+                field("p", FieldKind.PASSWORD, container = "login")))
+    }
+
     @Test fun focusedUsernameWinsAmongMultipleUsernames() {
         val form = FormSelector.select(listOf(field("other-u", FieldKind.USERNAME),
             field("u", FieldKind.USERNAME, true), field("p", FieldKind.PASSWORD)))

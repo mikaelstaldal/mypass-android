@@ -67,18 +67,44 @@ class FieldClassifierTest {
         assertNull(FieldClassifier.classify(input("type" to "checkbox", "name" to "login")))
         assertNull(FieldClassifier.classify(input("type" to "submit", "name" to "login")))
         assertNull(FieldClassifier.classify(input("type" to "date", "name" to "account")))
+        // Nor a candidate for the positional rule, which only ever looks at
+        // inputs that could hold one.
+        assertNull(FieldClassifier.classify(input("type" to "checkbox")))
+        assertNull(FieldClassifier.classify(input("type" to "number")))
     }
 
     @Test
-    fun anInputWithNothingToSayIsNotClassified() {
-        assertNull(FieldClassifier.classify(input()))
-        assertNull(FieldClassifier.classify(input("type" to "text", "name" to "search")))
+    fun anEmailInputIsAUsernameWithoutBeingNamedOne() {
+        assertEquals(FieldKind.USERNAME, FieldClassifier.classify(input("type" to "email")))
+        // my.charge.space/userapp/login: a shared input component that sets
+        // autocomplete="off" and neither a name nor an id. Browsers do not
+        // populate the Android input type for web fields, so the declared
+        // type is the only thing here that says "username".
+        assertEquals(
+            FieldKind.USERNAME,
+            FieldClassifier.classify(input("type" to "email", "autocomplete" to "off")),
+        )
+    }
+
+    @Test
+    fun anInputWithNothingToSayCouldStillHoldAUsername() {
+        // Not "this is the username" — only "this could be". Which one is, if
+        // any, is FormSelector's question, answered by position.
+        assertEquals(FieldKind.TEXT, FieldClassifier.classify(input()))
+        assertEquals(
+            FieldKind.TEXT,
+            FieldClassifier.classify(input("type" to "text", "name" to "search")),
+        )
+        assertEquals(FieldKind.TEXT, FieldClassifier.classify(input("type" to "tel")))
         // A tag that is not an input is not a form field we fill.
         assertNull(
             FieldClassifier.classify(
                 FieldSignals(htmlTag = "div", htmlAttributes = mapOf("id" to "username"))
             )
         )
+        // Nor is a native Android field: this rule is the desktop's, and the
+        // desktop only ever looks at a web page.
+        assertNull(FieldClassifier.classify(FieldSignals(htmlTag = null)))
     }
 
     @Test
