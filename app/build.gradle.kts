@@ -95,6 +95,10 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.process)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    // Biometric 1.1.0 otherwise pulls Fragment 1.2.5, whose legacy
+    // startActivityForResult override rejects ActivityResultRegistry request
+    // codes above 16 bits and crashes document pickers.
+    implementation(libs.androidx.fragment)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
