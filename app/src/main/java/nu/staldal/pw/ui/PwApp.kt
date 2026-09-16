@@ -13,9 +13,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import kotlinx.coroutines.flow.first
 import nu.staldal.pw.data.VaultState
 import nu.staldal.pw.ui.screens.EntryDetailScreen
 import nu.staldal.pw.ui.screens.EntryFormScreen
@@ -108,7 +111,7 @@ fun PwApp() {
                 val name = backStackEntry.arguments?.getString("name").orEmpty()
                 val entry = vaultViewModel.entry(name)
                 if (entry == null) {
-                    LaunchedEffect(name) { navController.popBackStack() }
+                    LaunchedEffect(name) { navController.leaveWhenCurrent(backStackEntry) }
                 } else {
                     EntryDetailScreen(
                         entry = entry,
@@ -117,7 +120,7 @@ fun PwApp() {
                         onDelete = {
                             vaultViewModel.remove(name) {
                                 vaultViewModel.show("Entry removed")
-                                navController.popBackStack()
+                                navController.leaveIfCurrent(backStackEntry)
                             }
                         },
                         onCopy = vaultViewModel::copyToClipboard,
@@ -125,7 +128,7 @@ fun PwApp() {
                 }
             }
 
-            composable(Routes.ADD) {
+            composable(Routes.ADD) { backStackEntry ->
                 EntryFormScreen(
                     existing = null,
                     defaultLength = settings.passwordLength,
@@ -134,7 +137,7 @@ fun PwApp() {
                     onSave = { entry ->
                         vaultViewModel.add(entry) {
                             vaultViewModel.show("Entry added")
-                            navController.popBackStack()
+                            navController.leaveIfCurrent(backStackEntry)
                         }
                     },
                     onGenerate = vaultViewModel::generatePassword,
@@ -145,7 +148,7 @@ fun PwApp() {
                 val name = backStackEntry.arguments?.getString("name").orEmpty()
                 val entry = vaultViewModel.entry(name)
                 if (entry == null) {
-                    LaunchedEffect(name) { navController.popBackStack() }
+                    LaunchedEffect(name) { navController.leaveWhenCurrent(backStackEntry) }
                 } else {
                     EntryFormScreen(
                         existing = entry,
@@ -156,8 +159,9 @@ fun PwApp() {
                             vaultViewModel.update(name, updated) {
                                 vaultViewModel.show("Entry updated")
                                 // A rename makes the detail route behind this
-                                // one stale, so go back to the list instead.
-                                navController.popBackStack(Routes.LIST, inclusive = false)
+                                // one stale, so go back to the list instead —
+                                // and that route then pops itself, above.
+                                navController.leaveIfCurrent(backStackEntry, Routes.LIST)
                             }
                         },
                         onGenerate = vaultViewModel::generatePassword,
@@ -191,4 +195,37 @@ fun PwApp() {
             }
         }
     }
+}
+
+/**
+ * Pop [entry] off the back stack once it is the destination on top of it. A
+ * screen whose subject has vanished under it — the entry deleted, renamed, or
+ * gone because the vault locked — leaves; but whatever made it vanish has often
+ * navigated away already, and the screen is only still composed for its exit
+ * transition. Popping there would take the destination below it too, and two
+ * pops for one delete empty the back stack and leave a blank screen.
+ *
+ * Waiting rather than testing once: the flow reports the current destination as
+ * soon as it is collected, so a screen that is on top leaves immediately, while
+ * one that is covered — a stale detail screen under the edit screen that renamed
+ * its entry — waits until it is uncovered instead of being stranded by a single
+ * check made at the wrong moment. If it never comes back, leaving composition
+ * cancels the wait with it.
+ */
+private suspend fun NavHostController.leaveWhenCurrent(entry: NavBackStackEntry) {
+    currentBackStackEntryFlow.first { it.id == entry.id }
+    popBackStack()
+}
+
+/**
+ * Pop [entry], up to [upTo] if given, but only while [entry] is still the
+ * destination on top of the back stack. A vault write takes the scrypt KDF's
+ * several seconds, and nothing stops the user leaving the screen that started
+ * one: by the time it reports success, the screen that asked for it may be gone
+ * and another one — or several — standing where it was. An unguarded pop would
+ * take those instead.
+ */
+private fun NavHostController.leaveIfCurrent(entry: NavBackStackEntry, upTo: String? = null) {
+    if (currentBackStackEntry?.id != entry.id) return
+    if (upTo == null) popBackStack() else popBackStack(upTo, inclusive = false)
 }
