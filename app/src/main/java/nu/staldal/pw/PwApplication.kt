@@ -1,11 +1,14 @@
 package nu.staldal.pw
 
 import android.app.Application
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -13,6 +16,7 @@ import kotlinx.coroutines.flow.first
 import nu.staldal.pw.data.PwRepository
 import nu.staldal.pw.data.Settings
 import nu.staldal.pw.data.SettingsState
+import nu.staldal.pw.data.VaultState
 import nu.staldal.pw.util.BiometricPassphraseStore
 import nu.staldal.pw.util.Clipboard
 
@@ -36,7 +40,7 @@ class PwApplication : Application() {
      * An application-lifetime scope for work that must outlive the screen that
      * started it — clearing the clipboard, above all.
      */
-    val applicationScope = CoroutineScope(SupervisorJob())
+    val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     /** Mirrors [SettingsState.browserCertificatePins] for the autofill service. */
     @Volatile
@@ -45,6 +49,8 @@ class PwApplication : Application() {
 
     @Volatile
     private var lockOnBackground: Boolean = false
+
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate() {
         super.onCreate()
@@ -68,8 +74,20 @@ class PwApplication : Application() {
             }
         }
 
+        applicationScope.launch {
+            repository.state.collect { state ->
+                if (state is VaultState.Locked) {
+                    // StateFlow publishes under the repository's stateLock.
+                    // Handler.post guarantees this clipboard IPC runs only
+                    // after the emitter has left that monitor.
+                    mainHandler.post(Clipboard::clearIfOwned)
+                }
+            }
+        }
+
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStop(owner: LifecycleOwner) {
+                Clipboard.setForeground(false)
                 // The auto-lock timer runs regardless; this is the stricter
                 // opt-in that also relocks the moment pw leaves the screen.
                 if (lockOnBackground) repository.lock()
@@ -77,6 +95,7 @@ class PwApplication : Application() {
             }
 
             override fun onStart(owner: LifecycleOwner) {
+                Clipboard.setForeground(true)
                 repository.enforceAutoLock()
             }
         })

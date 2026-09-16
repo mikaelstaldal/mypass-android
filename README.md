@@ -294,7 +294,7 @@ app unchanged.
 | A cross-origin iframe collecting the outer page's credential | The origin is taken from the password field's own node, not from the page as a whole, and a username field on a different origin is dropped rather than filled. A new origin declaration replaces both scheme and domain, including missing components. |
 | Another app reading the vault file | It lives in the app's private storage, owner-only, and is never backed up to the cloud or transferred to a new device (`backup_rules.xml`). |
 | Screenshots, the recents thumbnail, screen recording | Every pw window sets `FLAG_SECURE`. |
-| Clipboard sniffers | The autofill path does not use the clipboard at all. A password copied by hand is flagged sensitive (kept out of the system clipboard preview and history on Android 13+) and cleared after the timeout in Settings. |
+| Clipboard sniffers | The autofill path does not use the clipboard at all. A password copied by hand is flagged sensitive (kept out of the system clipboard preview and history on Android 13+) and cleared after the timeout in Settings or when the vault locks. If Android prevents safe ownership verification while pw is backgrounded, clearing waits until pw next enters the foreground rather than overwriting a newer clip. |
 
 ## File format and recovery
 

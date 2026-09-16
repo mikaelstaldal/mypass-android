@@ -59,7 +59,6 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
 
     fun lock() {
         repository.lock()
-        Clipboard.clearNow(getApplication())
     }
 
     fun createVault(passphrase: String, onSuccess: () -> Unit) =
