@@ -73,7 +73,13 @@ the two can be read side by side:
    `FormSelector` decides it rather than `FieldClassifier`. Name-matching alone
    cannot see a username box rendered as a bare `<input type="text">` with
    `autocomplete="off"`, which is common. When that rule changes there, change
-   it here. `AutofillStructureParser` is only the tree walk and origin inheritance.
+   it here. `AutofillStructureParser` is only the tree walk and origin
+   inheritance, where origin and container are separate questions: a node's own
+   origin declaration decides its origin, while `FormContext.fieldContainer`
+   decides what it is *part of* from its ancestors alone, because browsers
+   annotate every field of a frame-spanning form with that frame's origin and
+   reading each annotation as a document boundary leaves no two fields in one
+   form. `descend` still resets the enclosing form below such a node.
    `FillDiagnostics` is the opt-in record of *why* a request produced no offer,
    which every refusal here needs because the framework gives a service no way
    to explain itself. It is Android-free and unit-tested; keep it that way,

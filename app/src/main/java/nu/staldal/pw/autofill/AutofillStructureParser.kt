@@ -74,7 +74,9 @@ object AutofillStructureParser {
                     domain = context.origin.domain,
                     value = currentValue(node),
                     focused = node.isFocused,
-                    container = context.container,
+                    // The node's own origin declaration decides its origin,
+                    // above, but never its membership in the form around it.
+                    container = inherited.fieldContainer(parent),
                 )
             }
         }
