@@ -16,6 +16,8 @@ data class ParsedForm(
     /** Current field contents, for a save request. */
     val usernameValue: String?,
     val passwordValue: String?,
+    /** Why there is no form here; for [FillDiagnostics] only. */
+    val diagnosis: FormDiagnosis = FormDiagnosis(),
 ) {
     val autofillIds: Array<AutofillId>
         get() = listOfNotNull(usernameId, passwordId).toTypedArray()
@@ -48,6 +50,7 @@ object AutofillStructureParser {
             webDomain = selected.webDomain,
             usernameValue = selected.usernameValue,
             passwordValue = selected.passwordValue,
+            diagnosis = selected.diagnosis,
         )
     }
 

@@ -13,6 +13,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
+import nu.staldal.pw.autofill.FillDiagnostics
 import nu.staldal.pw.data.PwRepository
 import nu.staldal.pw.data.Settings
 import nu.staldal.pw.data.SettingsState
@@ -62,13 +63,16 @@ class PwApplication : Application() {
         settings = Settings(this)
         // Autofill can arrive before the collector emits. Load the small local
         // preference blob before publishing this application to the service.
-        browserCertificatePins = runBlocking { settings.state.first().browserCertificatePins }
+        val initial = runBlocking { settings.state.first() }
+        browserCertificatePins = initial.browserCertificatePins
+        FillDiagnostics.setEnabled(initial.autofillDiagnostics)
 
         applicationScope.launch {
             settings.state.collect { state ->
                 repository.autoLockMinutes = state.autoLockMinutes
                 repository.scryptLogN = state.scryptLogN
                 browserCertificatePins = state.browserCertificatePins
+                FillDiagnostics.setEnabled(state.autofillDiagnostics)
                 lockOnBackground = state.lockOnBackground
                 Clipboard.clearAfterSeconds = state.clipboardClearSeconds
             }

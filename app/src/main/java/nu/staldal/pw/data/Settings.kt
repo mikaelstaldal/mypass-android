@@ -46,6 +46,13 @@ data class SettingsState(
      * Legacy package-only settings are intentionally never migrated.
      */
     val browserCertificatePins: String = "",
+    /**
+     * Record why recent autofill requests produced no offer. Off by default;
+     * the records live in memory only, hold no field contents and no entry
+     * names, and are dropped when this is switched off. Only the preference
+     * itself is persisted.
+     */
+    val autofillDiagnostics: Boolean = false,
 ) {
     companion object {
         const val DEFAULT_AUTO_LOCK_MINUTES = 5
@@ -75,6 +82,7 @@ class Settings(context: Context) {
             scryptLogN = (prefs[SCRYPT_LOG_N] ?: ScryptDefaults.LOG_N)
                 .coerceIn(ScryptDefaults.MIN_LOG_N, ScryptDefaults.MAX_LOG_N),
             browserCertificatePins = prefs[BROWSER_CERTIFICATE_PINS] ?: "",
+            autofillDiagnostics = prefs[AUTOFILL_DIAGNOSTICS] ?: false,
         )
     }
 
@@ -100,6 +108,8 @@ class Settings(context: Context) {
         }
     }
 
+    suspend fun setAutofillDiagnostics(value: Boolean) = put(AUTOFILL_DIAGNOSTICS, value)
+
     private suspend fun <T> put(key: Preferences.Key<T>, value: T) {
         store.edit { it[key] = value }
     }
@@ -112,5 +122,6 @@ class Settings(context: Context) {
         val PASSWORD_CHARSET = stringPreferencesKey("password_charset")
         val SCRYPT_LOG_N = intPreferencesKey("scrypt_log_n")
         val BROWSER_CERTIFICATE_PINS = stringPreferencesKey("browser_certificate_pins_v1")
+        val AUTOFILL_DIAGNOSTICS = booleanPreferencesKey("autofill_diagnostics")
     }
 }

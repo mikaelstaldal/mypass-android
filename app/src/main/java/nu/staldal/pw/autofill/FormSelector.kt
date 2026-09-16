@@ -32,6 +32,31 @@ data class SelectedForm<T>(
     val webDomain: String?,
     val usernameValue: String?,
     val passwordValue: String?,
+    /** Why there is no form here, and what that was decided from. */
+    val diagnosis: FormDiagnosis = FormDiagnosis(),
+)
+
+/** Which of [FormSelector]'s rules declined to name a form. */
+enum class FormRefusal {
+    NO_CLASSIFIED_FIELD,
+    NO_FOCUSED_FIELD,
+    INELIGIBLE_ORIGIN,
+    NO_SHARED_CONTAINER,
+    NO_PASSWORD_FIELD,
+    AMBIGUOUS_PASSWORD,
+}
+
+/**
+ * What [FormSelector] saw, for [FillDiagnostics] alone. Nothing here may feed
+ * a fill decision: [focusedScheme] and [focusedHost] are what the browser
+ * *claimed*, recorded before the eligibility rules judged them, which is
+ * precisely why they are worth showing and why they must not be acted on.
+ */
+data class FormDiagnosis(
+    val refusal: FormRefusal? = null,
+    val classifiedFields: Int = 0,
+    val focusedScheme: String? = null,
+    val focusedHost: String? = null,
 )
 
 /**
@@ -54,20 +79,38 @@ data class SelectedForm<T>(
 object FormSelector {
 
     fun <T> select(candidates: List<FieldCandidate<T>>, focusedId: T? = null): SelectedForm<T> {
-        val empty = SelectedForm<T>(null, null, null, null, null, null)
+        val seen = candidates.size
+        fun refuse(refusal: FormRefusal, focused: FieldCandidate<T>? = null) = SelectedForm<T>(
+            null, null, null, null, null, null,
+            FormDiagnosis(refusal, seen, focused?.scheme, focused?.domain),
+        )
+
         // The framework id is authoritative for browser virtual fields. If it
         // names an unclassified/missing node, refuse rather than use a flag.
         val focused = candidates.singleOrNull {
             if (focusedId != null) it.id == focusedId else it.focused
-        } ?: return empty
-        Matching.eligibleWebHost(focused.scheme, focused.domain) ?: return empty
+        } ?: return refuse(
+            if (candidates.isEmpty()) FormRefusal.NO_CLASSIFIED_FIELD else FormRefusal.NO_FOCUSED_FIELD
+        )
+        Matching.eligibleWebHost(focused.scheme, focused.domain)
+            ?: return refuse(FormRefusal.INELIGIBLE_ORIGIN, focused)
         fun sameScope(field: FieldCandidate<T>): Boolean =
             focused.container != null && field.container == focused.container &&
                 field.scheme == focused.scheme && field.domain == focused.domain
 
         val scoped = candidates.filter(::sameScope)
+        val passwords = scoped.filter { it.kind == FieldKind.PASSWORD }
         val password = if (focused.kind == FieldKind.PASSWORD) focused else
-            scoped.singleOrNull { it.kind == FieldKind.PASSWORD } ?: return empty
+            passwords.singleOrNull() ?: return refuse(
+                when {
+                    // A focused field with no container admits only itself, and
+                    // it is not the password, so there is nothing to pair with.
+                    focused.container == null -> FormRefusal.NO_SHARED_CONTAINER
+                    passwords.isEmpty() -> FormRefusal.NO_PASSWORD_FIELD
+                    else -> FormRefusal.AMBIGUOUS_PASSWORD
+                },
+                focused,
+            )
         // Do not guess among multiple username fields (e.g. registration).
         val username = if (focused.kind == FieldKind.USERNAME) focused else
             scoped.singleOrNull { it.kind == FieldKind.USERNAME }
@@ -79,6 +122,7 @@ object FormSelector {
             webDomain = password.domain,
             usernameValue = username?.value,
             passwordValue = password.value,
+            diagnosis = FormDiagnosis(null, seen, focused.scheme, focused.domain),
         )
     }
 }

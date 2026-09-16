@@ -67,6 +67,13 @@ the two can be read side by side:
    `FieldClassifier` (what a field is) and `FormSelector` (which pair of fields
    is the form to answer for). Both are free of Android types; keep them that
    way. `AutofillStructureParser` is only the tree walk and origin inheritance.
+   `FillDiagnostics` is the opt-in record of *why* a request produced no offer,
+   which every refusal here needs because the framework gives a service no way
+   to explain itself. It is Android-free and unit-tested; keep it that way,
+   keep it off by default and in memory only, and keep field contents and
+   entry names out of `FillRecord` — a test asserts its field list for exactly
+   that reason. `FormSelector` reports which rule refused through
+   `FormDiagnosis`, which must never feed a fill decision.
 
 Errors are layered the same way: `ScryptFormatException` → `VaultException` →
 `PwException`, with `PwRepository.mapVaultException` mapping low-level failures

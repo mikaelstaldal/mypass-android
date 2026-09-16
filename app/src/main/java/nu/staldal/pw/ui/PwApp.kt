@@ -191,6 +191,7 @@ fun PwApp() {
                     onPasswordCharset = settingsViewModel::setPasswordCharset,
                     onScryptLogN = settingsViewModel::setScryptLogN,
                     onBrowserCertificatePins = settingsViewModel::setBrowserCertificatePins,
+                    onAutofillDiagnostics = settingsViewModel::setAutofillDiagnostics,
                 )
             }
         }

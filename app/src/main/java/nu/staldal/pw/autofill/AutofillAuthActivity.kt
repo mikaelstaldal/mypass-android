@@ -138,6 +138,13 @@ class AutofillAuthActivity : FragmentActivity() {
             return
         }
         val response = FillResponses.forEntries(this, form, destination.host, entries, inline)
+        // The unlock offer said only "pw has something here"; whether anything
+        // actually matched is decided now, after the vault opened.
+        FillDiagnostics.record(
+            destination.packageName,
+            if (response == null) FillOutcome.NO_MATCHING_ENTRY else FillOutcome.OFFERED,
+            form.webScheme, destination.host, form.diagnosis.classifiedFields,
+        )
         setResult(
             Activity.RESULT_OK,
             Intent().putExtra(AutofillManager.EXTRA_AUTHENTICATION_RESULT, response),

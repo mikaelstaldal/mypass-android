@@ -10,27 +10,41 @@ class FormSelectorTest {
                       scheme: String? = "https", value: String? = null) =
         FieldCandidate(kind, id, scheme, domain, value, focused, container)
 
-    private fun assertEmpty(fields: List<FieldCandidate<String>>) {
-        assertEquals(SelectedForm<String>(null, null, null, null, null, null), FormSelector.select(fields))
+    /**
+     * A refusal names no fields and says which rule refused: the reason is what
+     * [FillDiagnostics] reports, so it is asserted alongside the emptiness.
+     */
+    private fun assertRefused(refusal: FormRefusal, fields: List<FieldCandidate<String>>) {
+        val form = FormSelector.select(fields)
+        assertNull(form.usernameId)
+        assertNull(form.passwordId)
+        assertNull(form.webScheme)
+        assertNull(form.webDomain)
+        assertNull(form.usernameValue)
+        assertNull(form.passwordValue)
+        assertEquals(refusal, form.diagnosis.refusal)
     }
 
     @Test fun missingOrMultipleFocusIsRefused() {
-        assertEmpty(emptyList())
-        assertEmpty(listOf(field("u", FieldKind.USERNAME), field("p", FieldKind.PASSWORD)))
-        assertEmpty(listOf(field("u", FieldKind.USERNAME, true), field("p", FieldKind.PASSWORD, true)))
+        assertRefused(FormRefusal.NO_CLASSIFIED_FIELD, emptyList())
+        assertRefused(FormRefusal.NO_FOCUSED_FIELD,
+            listOf(field("u", FieldKind.USERNAME), field("p", FieldKind.PASSWORD)))
+        assertRefused(FormRefusal.NO_FOCUSED_FIELD,
+            listOf(field("u", FieldKind.USERNAME, true), field("p", FieldKind.PASSWORD, true)))
     }
 
     @Test fun focusedUsernameCannotSelectAnotherFrame() {
-        assertEmpty(listOf(field("u", FieldKind.USERNAME, true),
+        assertRefused(FormRefusal.NO_PASSWORD_FIELD, listOf(field("u", FieldKind.USERNAME, true),
             field("p", FieldKind.PASSWORD, domain = "other.example")))
         // Even same-origin frames have different container identities.
-        assertEmpty(listOf(field("u", FieldKind.USERNAME, true, "frame-a"),
+        assertRefused(FormRefusal.NO_PASSWORD_FIELD, listOf(field("u", FieldKind.USERNAME, true, "frame-a"),
             field("p", FieldKind.PASSWORD, container = "frame-b")))
     }
 
     @Test fun usernameOnlyFormCannotBorrowAdjacentPassword() {
-        assertEmpty(listOf(field("u", FieldKind.USERNAME, true, "username-only"),
-            field("p", FieldKind.PASSWORD, container = "login")))
+        assertRefused(FormRefusal.NO_PASSWORD_FIELD,
+            listOf(field("u", FieldKind.USERNAME, true, "username-only"),
+                field("p", FieldKind.PASSWORD, container = "login")))
     }
 
     @Test fun focusSelectsTheEnclosingFormInEitherFieldOrder() {
@@ -45,7 +59,7 @@ class FormSelectorTest {
     }
 
     @Test fun ambiguousPasswordsAreRefused() {
-        assertEmpty(listOf(field("u", FieldKind.USERNAME, true),
+        assertRefused(FormRefusal.AMBIGUOUS_PASSWORD, listOf(field("u", FieldKind.USERNAME, true),
             field("p1", FieldKind.PASSWORD), field("p2", FieldKind.PASSWORD)))
     }
 
@@ -72,12 +86,36 @@ class FormSelectorTest {
         for (password in listOf(field("p", FieldKind.PASSWORD, true, scheme = null),
             field("p", FieldKind.PASSWORD, true, domain = null),
             field("p", FieldKind.PASSWORD, true, scheme = "http"))) {
-            assertEmpty(listOf(field("u", FieldKind.USERNAME), password))
+            assertRefused(FormRefusal.INELIGIBLE_ORIGIN, listOf(field("u", FieldKind.USERNAME), password))
         }
     }
 
+    /**
+     * The origin the browser claimed is reported as it arrived, unjudged — a
+     * browser that reports no scheme is the case this exists to diagnose.
+     */
+    @Test fun refusedOriginIsReportedAsTheBrowserClaimedIt() {
+        val diagnosis = FormSelector.select(listOf(
+            field("u", FieldKind.USERNAME),
+            field("p", FieldKind.PASSWORD, true, scheme = null, domain = "example.com"),
+        )).diagnosis
+        assertEquals(FormRefusal.INELIGIBLE_ORIGIN, diagnosis.refusal)
+        assertNull(diagnosis.focusedScheme)
+        assertEquals("example.com", diagnosis.focusedHost)
+        assertEquals(2, diagnosis.classifiedFields)
+    }
+
+    @Test fun aSelectedFormReportsNoRefusal() {
+        val diagnosis = FormSelector.select(listOf(field("u", FieldKind.USERNAME),
+            field("p", FieldKind.PASSWORD, true))).diagnosis
+        assertNull(diagnosis.refusal)
+        assertEquals("https", diagnosis.focusedScheme)
+        assertEquals("example.com", diagnosis.focusedHost)
+    }
+
     @Test fun missingContainerAllowsOnlyTheFocusedPassword() {
-        assertEmpty(listOf(field("u", FieldKind.USERNAME, true, null), field("p", FieldKind.PASSWORD, container = null)))
+        assertRefused(FormRefusal.NO_SHARED_CONTAINER,
+            listOf(field("u", FieldKind.USERNAME, true, null), field("p", FieldKind.PASSWORD, container = null)))
         val form = FormSelector.select(listOf(field("u", FieldKind.USERNAME, container = null),
             field("p", FieldKind.PASSWORD, true, null)))
         assertNull(form.usernameId)

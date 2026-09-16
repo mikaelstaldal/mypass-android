@@ -255,6 +255,38 @@ Unlinked key changes and local rebuilds fail closed until deliberately enrolled;
 never substitute a package-only
 fallback. No network lookup is performed by pw.
 
+### Why a fill did not happen
+
+Every refusal above is silent. The autofill framework gives a service no way to
+say "I declined, and here is why" — it returns no offer, and the keyboard shows
+nothing — so an unpinned certificate, a browser that never asked pw in the
+first place, a page reporting no scheme, and an entry without a `url` all look
+identical from the outside, while each has a different fix.
+
+**Settings → Record why fills were refused** turns on a diagnostic that keeps
+the last few requests and what pw decided about each: the requesting package,
+the scheme and host it claimed, how many fields were classified, and the
+outcome. It is **off by default**, and deliberately weak as a store — the
+records live in this process's memory only, are never written to disk and never
+logged, are dropped when the switch goes off, and are lost when pw stops. They
+hold no field contents and no entry names.
+
+Two things it is worth knowing before switching it on. The records name the
+hosts of pages you focused a password field on, so while it is on, pw's own
+settings screen shows a little of your browsing; `FLAG_SECURE` still applies,
+and "Clear records" drops them immediately. And on a refused request the origin
+shown is what the browser *claimed*, recorded before the eligibility rules
+judged it — that is what makes a missing scheme visible, and it is never used
+to decide a fill. A request that got as far as matching shows the normalized
+host instead, which is the one the entries were compared against.
+
+A common first answer it gives is that no record appears at all. That means the
+browser never asked pw, which is a setting inside the browser rather than
+anything in pw: Chrome has *Settings → Autofill services → Autofill using
+another service*, and Samsung Internet has its own autofill provider choice
+that defaults to Samsung Pass. Android's own **Settings → Use pw for autofill**
+has to be set too.
+
 ### Matching parity with the desktop
 
 Which site may receive which credential is decided by string comparison on
@@ -303,6 +335,7 @@ app unchanged.
 | A cross-origin iframe collecting the outer page's credential | The origin is taken from the password field's own node, not from the page as a whole, and a username field on a different origin is dropped rather than filled. A new origin declaration replaces both scheme and domain, including missing components. |
 | Another app reading the vault file | It lives in the app's private storage, owner-only, and is never backed up to the cloud or transferred to a new device (`backup_rules.xml`). |
 | Screenshots, the recents thumbnail, screen recording | Every pw window sets `FLAG_SECURE`. |
+| A shoulder-surfer or screenshot of the refusal diagnostic | It is off by default and holds no field contents and no entry names — the requesting package, the claimed origin, a field count and the decision. While on, it does name hosts you focused a password field on, in memory only, until switched off or pw stops. |
 | Clipboard sniffers | The autofill path does not use the clipboard at all. A password copied by hand is flagged sensitive (kept out of the system clipboard preview and history on Android 13+) and cleared after the timeout in Settings or when the vault locks. If Android prevents safe ownership verification while pw is backgrounded, clearing waits until pw next enters the foreground rather than overwriting a newer clip. |
 
 ## File format and recovery

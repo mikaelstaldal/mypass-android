@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.fragment.app.FragmentActivity
 import nu.staldal.pw.autofill.BrowserCertificates
+import nu.staldal.pw.autofill.FillDiagnostics
 import nu.staldal.pw.autofill.Browsers
 import nu.staldal.pw.data.ScryptDefaults
 import nu.staldal.pw.data.SettingsState
@@ -63,6 +64,7 @@ fun SettingsScreen(
     onPasswordCharset: (String) -> Unit,
     onScryptLogN: (Int) -> Unit,
     onBrowserCertificatePins: (String) -> Unit,
+    onAutofillDiagnostics: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
     val activity = context as? FragmentActivity
@@ -233,6 +235,8 @@ fun SettingsScreen(
             }
             Spacer(Modifier.height(12.dp))
             BrowserEnrollment(settings.browserCertificatePins, onBrowserCertificatePins)
+            Spacer(Modifier.height(12.dp))
+            FillDiagnosticsSetting(settings.autofillDiagnostics, onAutofillDiagnostics)
 
             HorizontalDivider(Modifier.padding(vertical = 16.dp))
             SectionHeader("Vault file")
@@ -567,6 +571,48 @@ private fun SwitchSetting(
             }
         }
         Switch(checked = checked, onCheckedChange = onChecked, enabled = enabled)
+    }
+}
+
+/**
+ * The opt-in refusal log. Every refusal in the autofill path is silent — the
+ * framework has no way for a service to explain itself — so without this a
+ * browser that does not fill looks the same whatever the cause.
+ */
+@Composable
+private fun FillDiagnosticsSetting(enabled: Boolean, onEnabled: (Boolean) -> Unit) {
+    SwitchSetting(
+        label = "Record why fills were refused",
+        help = "Keeps the last ${FillDiagnostics.CAPACITY} autofill requests in memory: the " +
+            "browser, the origin it reported, and the decision. No field contents, no entry " +
+            "names, nothing written to disk. Forgotten when switched off or when pw stops.",
+        checked = enabled,
+        onChecked = onEnabled,
+    )
+    if (!enabled) return
+    val records by FillDiagnostics.records.collectAsState()
+    Spacer(Modifier.height(8.dp))
+    if (records.isEmpty()) {
+        Text(
+            "No requests recorded yet. Open a login page in your browser and tap the " +
+                "password field, then come back.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+    records.forEach { record ->
+        Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+            Text(record.outcome.name, style = MaterialTheme.typography.bodyLarge)
+            Text(record.outcome.description, style = MaterialTheme.typography.bodySmall)
+            Text(
+                "from ${record.browserPackage ?: "(no package)"} · " +
+                    "scheme ${record.scheme ?: "(none)"} · host ${record.host ?: "(none)"} · " +
+                    "${record.classifiedFields} classified field(s)",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+    if (records.isNotEmpty()) {
+        TextButton(onClick = { FillDiagnostics.clear() }) { Text("Clear records") }
     }
 }
 

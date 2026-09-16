@@ -32,6 +32,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun setBrowserCertificatePins(value: String) = edit { settings.setBrowserCertificatePins(value) }
 
+    fun setAutofillDiagnostics(value: Boolean) = edit { settings.setAutofillDiagnostics(value) }
+
     private fun edit(block: suspend () -> Unit) {
         viewModelScope.launch { block() }
     }

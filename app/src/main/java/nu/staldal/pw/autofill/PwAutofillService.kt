@@ -49,18 +49,36 @@ class PwAutofillService : AutofillService() {
         val context = request.fillContexts.lastOrNull()
         val structure = context?.structure
         if (structure == null) {
+            FillDiagnostics.record(null, FillOutcome.NO_STRUCTURE)
             callback.onSuccess(null)
             return
         }
+        val requester = structure.activityComponent?.packageName
         val focusedId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) context.focusedId else null
         val form = AutofillStructureParser.parse(structure, focusedId)
         if (form.passwordId == null) {
-            // Nothing to fill a password into: not a login form.
+            // Nothing to fill a password into: not a login form. The selector
+            // always names the rule it refused on, so an absent reason records
+            // nothing rather than inventing one.
+            val diagnosis = form.diagnosis
+            diagnosis.refusal?.let {
+                FillDiagnostics.record(
+                    requester, FillDiagnostics.outcomeOf(it),
+                    diagnosis.focusedScheme, diagnosis.focusedHost, diagnosis.classifiedFields,
+                )
+            }
             callback.onSuccess(null)
             return
         }
-        val host = eligibleHost(structure, form)
+        val eligibility = eligibility(structure, form)
+        val host = eligibility.host
         if (host == null) {
+            FillDiagnostics.record(
+                requester,
+                if (eligibility.trusted) FillOutcome.INELIGIBLE_ORIGIN
+                else FillOutcome.UNTRUSTED_BROWSER,
+                form.webScheme, form.webDomain, form.diagnosis.classifiedFields,
+            )
             callback.onSuccess(null)
             return
         }
@@ -92,6 +110,16 @@ class PwAutofillService : AutofillService() {
             authToken?.let { AutofillAuthRequests.store.cancel(it) }
             callback.onSuccess(null)
         } else {
+            FillDiagnostics.record(
+                requester,
+                when {
+                    response == null && entries == null -> FillOutcome.NO_VAULT
+                    response == null -> FillOutcome.NO_MATCHING_ENTRY
+                    entries == null -> FillOutcome.UNLOCK_OFFERED
+                    else -> FillOutcome.OFFERED
+                },
+                form.webScheme, host, form.diagnosis.classifiedFields,
+            )
             callback.onSuccess(response)
         }
     }
@@ -132,12 +160,25 @@ class PwAutofillService : AutofillService() {
      * The page's hostname when this request may be answered at all: a trusted
      * browser, reporting an eligible scheme and a usable host.
      */
-    private fun eligibleHost(structure: AssistStructure, form: ParsedForm): String? {
+    private fun eligibleHost(structure: AssistStructure, form: ParsedForm): String? =
+        eligibility(structure, form).host
+
+    /**
+     * [eligibleHost], with the publisher check kept visible: an untrusted
+     * requester and an ineligible origin are two different refusals, and the
+     * diagnostic needs to tell them apart. Certificates are read once, on this
+     * path only, exactly as before.
+     */
+    private fun eligibility(structure: AssistStructure, form: ParsedForm): Eligibility {
         val packageName = structure.activityComponent?.packageName
         val identity = packageName?.let { BrowserCertificates.read(packageManager, it) }
-        if (!Browsers.isTrustedBrowser(packageName, identity, app.browserCertificatePins)) return null
-        return Matching.eligibleWebHost(form.webScheme, form.webDomain)
+        if (!Browsers.isTrustedBrowser(packageName, identity, app.browserCertificatePins)) {
+            return Eligibility(trusted = false, host = null)
+        }
+        return Eligibility(trusted = true, host = Matching.eligibleWebHost(form.webScheme, form.webDomain))
     }
+
+    private data class Eligibility(val trusted: Boolean, val host: String?)
 
     private companion object {
         const val REQUEST_CODE_SAVE = 3
