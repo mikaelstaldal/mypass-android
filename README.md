@@ -42,6 +42,9 @@ The **username** is a free-form label stored alongside the password; it may be
 omitted. Generated passwords use a cryptographically secure random number
 generator (`SecureRandom`, OS-seeded) without modulo bias, and default to 16
 characters of letters, digits and `-` — the same default as the desktop.
+Custom character sets must contain at least two distinct Unicode code points;
+duplicate code points are rejected so every permitted character has the same
+probability.
 
 ## Getting your desktop vault onto the phone
 

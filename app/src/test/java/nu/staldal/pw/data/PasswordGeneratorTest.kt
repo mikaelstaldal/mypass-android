@@ -50,7 +50,20 @@ class PasswordGeneratorTest {
     }
 
     @Test
+    fun rejectsDuplicateCharsetCharacters() {
+        for (charset in listOf("aab", "abca", "😀😀😺")) {
+            val exception = assertThrows(PwException.InvalidInput::class.java) {
+                PasswordGenerator.generate(8, charset)
+            }
+            assertEquals("password charset", exception.what)
+            assertEquals("must not contain duplicate characters", exception.reason)
+        }
+    }
+
+    @Test
     fun charsetIsCountedInCodePointsSoAstralCharactersAreNotSplit() {
+        // These two code points share the same UTF-16 high surrogate. A
+        // Char-based uniqueness check would incorrectly reject this charset.
         val password = PasswordGenerator.generate(10, "🔑🔒").expose()
         assertEquals(10, password.codePointCount(0, password.length))
         assertEquals(20, password.length)

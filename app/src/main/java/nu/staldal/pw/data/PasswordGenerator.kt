@@ -17,9 +17,9 @@ object PasswordGenerator {
      * Generate a random password of [length] characters from [charset], using
      * a cryptographically secure generator.
      *
-     * The charset is taken as Unicode code points, so an astral character
-     * counts once and is never split. `SecureRandom.nextInt(bound)` uses
-     * rejection sampling, so there is no modulo bias.
+     * The charset is taken as unique Unicode code points, so an astral
+     * character counts once and is never split. `SecureRandom.nextInt(bound)`
+     * uses rejection sampling, so there is no modulo bias.
      */
     fun generate(length: Int, charset: String): Secret {
         if (length <= 0 || length > MAX_LENGTH) {
@@ -29,10 +29,17 @@ object PasswordGenerator {
             )
         }
         val chars = charset.codePoints().toArray()
-        if (chars.toSet().size < 2) {
+        val uniqueChars = chars.toSet()
+        if (uniqueChars.size < 2) {
             throw PwException.InvalidInput(
                 "password charset",
                 "must contain at least 2 distinct characters",
+            )
+        }
+        if (uniqueChars.size != chars.size) {
+            throw PwException.InvalidInput(
+                "password charset",
+                "must not contain duplicate characters",
             )
         }
         val builder = StringBuilder(length)
