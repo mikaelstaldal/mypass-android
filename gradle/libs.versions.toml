@@ -17,6 +17,7 @@ bouncycastle = "1.79"
 guava = "33.4.0-android"
 icu4j = "76.1"
 coroutines = "1.9.0"
+kotpass = "0.13.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -40,6 +41,7 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 bouncycastle-provider = { group = "org.bouncycastle", name = "bcprov-jdk18on", version.ref = "bouncycastle" }
 guava = { group = "com.google.guava", name = "guava", version.ref = "guava" }
 icu4j = { group = "com.ibm.icu", name = "icu4j", version.ref = "icu4j" }
+kotpass = { group = "app.keemobile", name = "kotpass", version.ref = "kotpass" }
 
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }

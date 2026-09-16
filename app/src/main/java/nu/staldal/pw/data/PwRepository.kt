@@ -376,6 +376,21 @@ class PwRepository(
         }
     }
 
+    /** Add every live entry from a KeePass KDBX database to the open vault. */
+    suspend fun importKeePass(input: InputStream, importPassphrase: String) {
+        val imported = withContext(ioDispatcher) { KeePassImport.decode(input, importPassphrase) }
+        mutate { entries ->
+            val names = entries.asSequence().mapTo(mutableSetOf()) { it.name }
+            val duplicate = imported.firstOrNull { !names.add(it.name) }
+            if (duplicate != null) throw PwException.AlreadyExists(duplicate.name)
+            val merged = entries + imported
+            if (merged.size > Vault.MAX_ENTRIES) {
+                throw PwException.InvalidInput("KeePass file", "would exceed ${Vault.MAX_ENTRIES} vault entries")
+            }
+            merged
+        }
+    }
+
     /**
      * Run [produce] — the slow, failure-prone half of opening the vault — and
      * open it with the result.

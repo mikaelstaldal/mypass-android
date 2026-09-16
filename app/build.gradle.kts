@@ -115,6 +115,8 @@ dependencies {
     // how far a parent-domain match may climb — see Matching.
     implementation(libs.guava)
     implementation(libs.icu4j)
+    // Read-only KeePass KDBX 3.x/4.x import.
+    implementation(libs.kotpass)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

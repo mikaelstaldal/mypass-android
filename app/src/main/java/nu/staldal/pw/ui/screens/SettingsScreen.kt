@@ -116,11 +116,15 @@ fun SettingsScreen(
     }
     var confirmJsonExport by remember { mutableStateOf(false) }
     var importUri by remember { mutableStateOf<Uri?>(null) }
+    var keepassUri by remember { mutableStateOf<Uri?>(null) }
     val importLauncher = rememberLauncherForActivityResult(
         // No MIME type is registered for .scrypt files, so accept anything and
         // let the decode decide.
         ActivityResultContracts.OpenDocument()
     ) { uri -> if (uri != null) importUri = uri }
+    val keepassLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> if (uri != null) keepassUri = uri }
 
     Scaffold(
         topBar = {
@@ -277,6 +281,20 @@ fun SettingsScreen(
                     "previous local entries are discarded. Export them first if needed.",
                 style = MaterialTheme.typography.bodySmall,
             )
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { keepassLauncher.launch(arrayOf("*/*")) },
+                Modifier.fillMaxWidth(),
+            ) {
+                Text("Import entries from KeePass (KDBX)")
+            }
+            Text(
+                "Adds the live entries from a KeePass 2.x database. Title, username, " +
+                    "password and URL are imported; groups, history, notes and attachments " +
+                    "are not. Existing entries are kept. Duplicate or invalid titles cancel " +
+                    "the whole import.",
+                style = MaterialTheme.typography.bodySmall,
+            )
             Spacer(Modifier.height(24.dp))
         }
     }
@@ -342,6 +360,21 @@ fun SettingsScreen(
                 ) {
                     vaultViewModel.show("Vault imported.")
                     onBack()
+                }
+            },
+        )
+    }
+
+    val pendingKeePass = keepassUri
+    if (pendingKeePass != null) {
+        ImportKeePassDialog(
+            onDismiss = { keepassUri = null },
+            onConfirm = { passphrase ->
+                keepassUri = null
+                vaultViewModel.importKeePass(
+                    { context.contentResolver.openInputStream(pendingKeePass) }, passphrase,
+                ) {
+                    vaultViewModel.show("KeePass entries imported.")
                 }
             },
         )
@@ -428,6 +461,26 @@ private fun ImportVaultDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit
                 onClick = { onConfirm(passphrase) },
                 enabled = passphrase.isNotEmpty(),
             ) { Text("Import") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun ImportKeePassDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    var passphrase by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Import from KeePass") },
+        text = {
+            Column {
+                Text("Enter the KeePass database's master passphrase.")
+                Spacer(Modifier.height(12.dp))
+                SecretField(passphrase, { passphrase = it }, "KeePass master passphrase")
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(passphrase) }) { Text("Import") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )

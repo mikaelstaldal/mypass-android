@@ -105,6 +105,14 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
+    fun importKeePass(openInput: () -> InputStream?, passphrase: String, onSuccess: () -> Unit) =
+        run(onSuccess) {
+            withContext(Dispatchers.IO) {
+                val input = openInput() ?: throw PwException.InvalidInput("file", "could not read the file you picked")
+                input.use { repository.importKeePass(it, passphrase) }
+            }
+        }
+
     fun exportVault(out: OutputStream, onSuccess: () -> Unit) =
         run(onSuccess) { out.use { repository.copyVaultTo(it) } }
 

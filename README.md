@@ -38,6 +38,12 @@ Plus what a phone needs and a terminal does not: an auto-lock timer, optional
 fingerprint unlock, and importing and exporting the vault file through the
 system file picker.
 
+Settings can also import entries from KeePass 2.x KDBX 3.x and 4.x databases.
+The import adds the live entries to the unlocked pw vault, mapping title,
+username, password and URL. KeePass groups, history, notes, custom fields and
+attachments have no counterpart in pw and are not imported. Existing entries
+remain; a duplicate or invalid title rejects the whole import without writing.
+
 The **username** is a free-form label stored alongside the password; it may be
 omitted. Generated passwords use a cryptographically secure random number
 generator (`SecureRandom`, OS-seeded) without modulo bias, and default to 16
