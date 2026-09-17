@@ -83,9 +83,10 @@ the two can be read side by side:
    `FillDiagnostics` is the opt-in record of *why* a request produced no offer,
    which every refusal here needs because the framework gives a service no way
    to explain itself. It is Android-free and unit-tested; keep it that way,
-   keep it off by default and in memory only, and keep field contents and
-   entry names out of `FillRecord` — a test asserts its field list for exactly
-   that reason. `FormSelector` reports which rule refused through
+   keep it off by default, and keep field contents and entry names out of
+   `FillRecord` — a test asserts its field list for exactly that reason. While
+   enabled the same metadata is emitted under the `pw-autofill` Logcat tag;
+   never add secrets to it. `FormSelector` reports which rule refused through
    `FormDiagnosis`, which must never feed a fill decision.
 
 Errors are layered the same way: `ScryptFormatException` → `VaultException` →

@@ -10,9 +10,15 @@ import java.lang.reflect.Modifier
 
 class FillDiagnosticsTest {
 
-    @Before fun reset() = FillDiagnostics.setEnabled(false)
+    @Before fun reset() {
+        FillDiagnostics.setEnabled(false)
+        FillDiagnostics.setDiagnosticSink(null)
+    }
 
-    @After fun tearDown() = FillDiagnostics.setEnabled(false)
+    @After fun tearDown() {
+        FillDiagnostics.setEnabled(false)
+        FillDiagnostics.setDiagnosticSink(null)
+    }
 
     private fun record(host: String) =
         FillDiagnostics.record("com.example.browser", FillOutcome.NO_MATCHING_ENTRY, "https", host, 2)
@@ -32,6 +38,47 @@ class FillDiagnosticsTest {
         record("example.com")
         FillDiagnostics.setEnabled(false)
         assertTrue(FillDiagnostics.records.value.isEmpty())
+    }
+
+    @Test fun emitsToTheDiagnosticSinkOnlyWhileEnabled() {
+        val emitted = mutableListOf<FillRecord>()
+        FillDiagnostics.setDiagnosticSink(emitted::add)
+        record("before.example")
+        FillDiagnostics.setEnabled(true)
+        record("enabled.example")
+        FillDiagnostics.setDiagnosticSink(null)
+        record("no-sink.example")
+        FillDiagnostics.setEnabled(false)
+        record("after.example")
+        assertEquals(listOf("enabled.example"), emitted.map { it.host })
+    }
+
+    @Test fun logMessageContainsOnlyTheRecordedMetadata() {
+        val record = FillRecord(
+            "com.example.browser", FillOutcome.INELIGIBLE_ORIGIN,
+            null, "example.com", 2,
+        )
+        assertEquals(
+            "outcome=INELIGIBLE_ORIGIN package=\"com.example.browser\" " +
+                "scheme=(none) host=\"example.com\" classifiedFields=2",
+            FillDiagnostics.logMessage(record),
+        )
+    }
+
+    @Test fun logMessageEscapesUntrustedMetadataOntoOneLine() {
+        val message = FillDiagnostics.logMessage(FillRecord(
+            "com.example\\\"browser", FillOutcome.INELIGIBLE_ORIGIN,
+            "ht\ttp", "first.example\r\nI/pw-autofill: outcome=OFFERED", 1,
+        ))
+        assertEquals(
+            "outcome=INELIGIBLE_ORIGIN package=\"com.example\\\\\\\"browser\" " +
+                "scheme=\"ht\\ttp\" " +
+                "host=\"first.example\\r\\nI/pw-autofill: outcome=OFFERED\" " +
+                "classifiedFields=1",
+            message,
+        )
+        assertFalse(message.contains('\n'))
+        assertFalse(message.contains('\r'))
     }
 
     @Test fun keepsTheMostRecentRequestsFirst() {

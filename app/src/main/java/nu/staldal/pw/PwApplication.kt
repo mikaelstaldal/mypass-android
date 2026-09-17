@@ -4,6 +4,7 @@ import android.app.Application
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -65,6 +66,9 @@ class PwApplication : Application() {
         // preference blob before publishing this application to the service.
         val initial = runBlocking { settings.state.first() }
         browserCertificatePins = initial.browserCertificatePins
+        FillDiagnostics.setDiagnosticSink { record ->
+            Log.i(AUTOFILL_DIAGNOSTIC_TAG, FillDiagnostics.logMessage(record))
+        }
         FillDiagnostics.setEnabled(initial.autofillDiagnostics)
 
         applicationScope.launch {
@@ -103,5 +107,9 @@ class PwApplication : Application() {
                 repository.enforceAutoLock()
             }
         })
+    }
+
+    private companion object {
+        const val AUTOFILL_DIAGNOSTIC_TAG = "pw-autofill"
     }
 }

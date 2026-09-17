@@ -585,7 +585,8 @@ private fun FillDiagnosticsSetting(enabled: Boolean, onEnabled: (Boolean) -> Uni
         label = "Record why fills were refused",
         help = "Keeps the last ${FillDiagnostics.CAPACITY} autofill requests in memory: the " +
             "browser, the origin it reported, and the decision. No field contents, no entry " +
-            "names, nothing written to disk. Forgotten when switched off or when pw stops.",
+            "names. Also writes the same metadata to Logcat with tag pw-autofill while enabled; " +
+            "forgotten in pw when switched off or when pw stops.",
         checked = enabled,
         onChecked = onEnabled,
     )

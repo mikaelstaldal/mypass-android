@@ -55,9 +55,10 @@ data class FillRecord(
  * missing scheme, or an entry with no `url`. Each of those has a different fix
  * and they are indistinguishable from the outside.
  *
- * Off by default, and deliberately weak as a store: the last few records, in
- * this process's memory only, never written to disk and never logged. It is
- * cleared when switched off and lost when the process dies.
+ * Off by default, and deliberately weak as a store: the last few records live
+ * in this process's memory and are also sent to an application-supplied
+ * diagnostic sink while enabled. They are cleared when switched off and lost
+ * when the process dies.
  */
 object FillDiagnostics {
 
@@ -73,6 +74,9 @@ object FillDiagnostics {
      * leaving a host on a screen that says recording is off.
      */
     private val lock = Any()
+
+    /** Android supplies Logcat here without making this class Android-bound. */
+    private var diagnosticSink: ((FillRecord) -> Unit)? = null
 
     /** Most recent first. */
     val records: StateFlow<List<FillRecord>> = _records.asStateFlow()
@@ -97,9 +101,47 @@ object FillDiagnostics {
         _records.value = emptyList()
     }
 
+    /**
+     * Installs the process-wide sink; kept separate so unit tests stay pure JVM.
+     * The sink runs under [lock], so it must be non-blocking and must not call
+     * back into this object.
+     */
+    fun setDiagnosticSink(sink: ((FillRecord) -> Unit)?) = synchronized(lock) {
+        diagnosticSink = sink
+    }
+
     fun record(record: FillRecord) = synchronized(lock) {
         if (enabled) {
             _records.value = (listOf(record) + _records.value).take(CAPACITY)
+            diagnosticSink?.invoke(record)
+        }
+    }
+
+    /** Stable, single-line representation shared by Logcat and its unit test. */
+    fun logMessage(record: FillRecord): String =
+        "outcome=${record.outcome.name} " +
+            "package=${logValue(record.browserPackage)} " +
+            "scheme=${logValue(record.scheme)} " +
+            "host=${logValue(record.host)} " +
+            "classifiedFields=${record.classifiedFields}"
+
+    /** Quotes untrusted structure metadata and prevents it from forging log lines. */
+    private fun logValue(value: String?): String {
+        if (value == null) return "(none)"
+        return buildString {
+            append('"')
+            for (character in value) when (character) {
+                '\\' -> append("\\\\")
+                '"' -> append("\\\"")
+                '\n' -> append("\\n")
+                '\r' -> append("\\r")
+                '\t' -> append("\\t")
+                else -> if (character.isISOControl()) {
+                    append("\\u")
+                    append(character.code.toString(16).padStart(4, '0'))
+                } else append(character)
+            }
+            append('"')
         }
     }
 

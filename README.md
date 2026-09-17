@@ -280,9 +280,14 @@ identical from the outside, while each has a different fix.
 the last few requests and what pw decided about each: the requesting package,
 the scheme and host it claimed, how many fields were classified, and the
 outcome. It is **off by default**, and deliberately weak as a store — the
-records live in this process's memory only, are never written to disk and never
-logged, are dropped when the switch goes off, and are lost when pw stops. They
-hold no field contents and no entry names.
+records live in this process's memory and are dropped when the switch goes off
+or pw stops. While enabled, the same metadata is also written to Logcat with
+tag `pw-autofill`, so it can be captured without switching back to pw. They
+hold no field contents and no entry names. Logcat retention is controlled by
+Android rather than pw; capture it over USB debugging with
+`adb logcat -s pw-autofill:I '*:S'`, and turn the diagnostic off after
+collecting the result. Ordinary apps cannot read another app's Logcat output,
+but a privileged app or a device bug report can.
 
 Two things it is worth knowing before switching it on. The records name the
 hosts of pages you focused a password field on, so while it is on, pw's own
@@ -348,7 +353,7 @@ app unchanged.
 | A cross-origin iframe collecting the outer page's credential | The origin is taken from the password field's own node, not from the page as a whole, and a username field on a different origin is dropped rather than filled. A new origin declaration replaces both scheme and domain, including missing components. A field's own origin annotation — browsers attach one to each field of a form that spans frames — settles that field's origin but not which form it belongs to; a document boundary still resets the enclosing form for everything below it, and pairing requires the same origin as well as the same container, so neither check alone carries the boundary. |
 | Another app reading the vault file | It lives in the app's private storage, owner-only, and is never backed up to the cloud or transferred to a new device (`backup_rules.xml`). |
 | Screenshots, the recents thumbnail, screen recording | Every pw window sets `FLAG_SECURE`. |
-| A shoulder-surfer or screenshot of the refusal diagnostic | It is off by default and holds no field contents and no entry names — the requesting package, the claimed origin, a field count and the decision. While on, it does name hosts you focused a password field on, in memory only, until switched off or pw stops. |
+| A shoulder-surfer, screenshot, or Logcat reader observes the refusal diagnostic | It is off by default and holds no field contents and no entry names — the requesting package, the claimed origin, a field count and the decision. While on, it names hosts you focused a password field on both in pw's memory and under the `pw-autofill` Logcat tag. Turning it off clears pw's copy; Android controls Logcat retention. |
 | Clipboard sniffers | The autofill path does not use the clipboard at all. A password copied by hand is flagged sensitive (kept out of the system clipboard preview and history on Android 13+) and cleared after the timeout in Settings or when the vault locks. If Android prevents safe ownership verification while pw is backgrounded, clearing waits until pw next enters the foreground rather than overwriting a newer clip. |
 
 ## File format and recovery

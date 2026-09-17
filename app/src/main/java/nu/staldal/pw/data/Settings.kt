@@ -48,9 +48,9 @@ data class SettingsState(
     val browserCertificatePins: String = "",
     /**
      * Record why recent autofill requests produced no offer. Off by default;
-     * the records live in memory only, hold no field contents and no entry
-     * names, and are dropped when this is switched off. Only the preference
-     * itself is persisted.
+     * the records live in memory and are emitted to Logcat, hold no field
+     * contents and no entry names, and are dropped from memory when this is
+     * switched off. Only the preference itself is persisted by pw.
      */
     val autofillDiagnostics: Boolean = false,
 ) {
