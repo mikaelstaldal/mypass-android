@@ -135,6 +135,26 @@ bearing; do not relax one without saying so in README.md's security table:
 - The origin comes from the password field's own node (or its nearest ancestor
   that declares one), so a cross-origin iframe cannot collect the outer page's
   credential.
+- No browser is registered for Android's **autofill compatibility mode**, and
+  `AutofillServiceMetadataTest` keeps it that way. The reason is the origin, not
+  the fields. The structure the platform derives from a browser's accessibility
+  tree (`View.populateVirtualStructure`) sets no HTML info and no autofill
+  hints, but it *does* set an input type — synthesized as a password variation
+  when the node reports `isPassword()` — so `FieldClassifier` would recognise a
+  password box, and a bare `<input type="text">` username beside it would go
+  unrecognised because `FieldKind.TEXT` needs an HTML tag. What that structure
+  never carries is an origin: no node declares a `webDomain`, and the URL-bar
+  text the framework attaches to the root loses its scheme whenever the address
+  bar shows a bare hostname (`AssistStructure.ViewNode.setWebDomain` parses it
+  with `Uri.parse`), so `Matching.eligibleWebHost` refuses. Filling anyway would
+  release a password to a page pw cannot identify — the one thing these rules
+  exist to prevent — and would cost an accessibility bridge over every page the
+  browser renders. Requests still arrive marked
+  `FillRequest.FLAG_COMPATIBILITY_MODE_REQUEST` on some builds: they are judged
+  by the same rules, recorded as such, and given no `SaveInfo`, because a
+  password read that way is the masked text the page renders. `FillResponses`
+  is the only place that can refuse it — `SaveRequest` carries no flags — which
+  is why the flag rides along in `AuthDestination` through the unlock.
 
 Android's autofill framework never sees HTTP authentication challenges, so the
 desktop's `exactly_matching_entries` / realm-narrowing path has no counterpart

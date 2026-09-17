@@ -137,12 +137,14 @@ class AutofillAuthActivity : FragmentActivity() {
             finish()
             return
         }
-        val response = FillResponses.forEntries(this, form, destination.host, entries, inline)
+        val response = FillResponses.forEntries(
+            this, form, destination.host, entries, inline, destination.compatibilityMode)
         // The unlock offer said only "pw has something here"; whether anything
         // actually matched is decided now, after the vault opened.
         FillDiagnostics.record(
             destination.packageName,
             if (response == null) FillOutcome.NO_MATCHING_ENTRY else FillOutcome.OFFERED,
+            destination.compatibilityMode,
             form.webScheme, destination.host, form.diagnosis.classifiedFields,
         )
         setResult(

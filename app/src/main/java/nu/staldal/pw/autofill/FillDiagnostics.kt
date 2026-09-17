@@ -5,15 +5,17 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * What became of a fill request. Every value but [OFFERED], [UNLOCK_OFFERED]
- * and [NO_VAULT] is a refusal, and the refusals are the point: the autofill
- * framework gives a service no way to say "I declined, and here is why", so
- * from the outside every one of them looks identical — nothing appears.
+ * What became of a fill request. Every value but [OFFERED], [UNLOCK_OFFERED],
+ * [NO_VAULT] and [REQUEST_CANCELLED] is a refusal, and the refusals are the
+ * point: the autofill framework gives a service no way to say "I declined, and
+ * here is why", so from the outside every one of them looks identical —
+ * nothing appears.
  */
 enum class FillOutcome(val description: String) {
     OFFERED("Offered matching entries."),
     UNLOCK_OFFERED("Offered to unlock the vault."),
     NO_VAULT("No vault on this device yet."),
+    REQUEST_CANCELLED("The framework withdrew the request before pw could answer it."),
     NO_STRUCTURE("The framework sent no view structure."),
     UNTRUSTED_BROWSER("Not a browser with a pinned or enrolled signing certificate."),
     NO_CLASSIFIED_FIELD("No field on the page looked like a username or password."),
@@ -37,6 +39,8 @@ enum class FillOutcome(val description: String) {
 data class FillRecord(
     val browserPackage: String?,
     val outcome: FillOutcome,
+    /** Whether Android derived this request through autofill compatibility mode. */
+    val compatibilityMode: Boolean = false,
     /** Scheme as the browser reported it, before any eligibility rule. */
     val scheme: String? = null,
     /** Host as the browser reported it, before normalization. */
@@ -121,6 +125,7 @@ object FillDiagnostics {
     fun logMessage(record: FillRecord): String =
         "outcome=${record.outcome.name} " +
             "package=${logValue(record.browserPackage)} " +
+            "compatibilityMode=${record.compatibilityMode} " +
             "scheme=${logValue(record.scheme)} " +
             "host=${logValue(record.host)} " +
             "classifiedFields=${record.classifiedFields}"
@@ -149,10 +154,11 @@ object FillDiagnostics {
     fun record(
         browserPackage: String?,
         outcome: FillOutcome,
+        compatibilityMode: Boolean = false,
         scheme: String? = null,
         host: String? = null,
         classifiedFields: Int = 0,
-    ) = record(FillRecord(browserPackage, outcome, scheme, host, classifiedFields))
+    ) = record(FillRecord(browserPackage, outcome, compatibilityMode, scheme, host, classifiedFields))
 
     /** What [FormSelector] refused for, in this vocabulary. */
     fun outcomeOf(refusal: FormRefusal): FillOutcome = when (refusal) {

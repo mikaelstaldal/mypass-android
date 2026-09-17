@@ -50,6 +50,7 @@ object FillResponses {
         host: String,
         entries: List<PasswordEntry>,
         inline: InlineRequest?,
+        compatibilityMode: Boolean = false,
     ): FillResponse? {
         if (form.passwordId == null) return null
         val matches = Matching.matchingEntries(host, entries)
@@ -70,7 +71,7 @@ object FillResponses {
                 )
             )
         }
-        addSaveInfo(builder, form)
+        addSaveInfo(builder, form, compatibilityMode)
         return builder.build()
     }
 
@@ -89,6 +90,7 @@ object FillResponses {
         host: String,
         inline: InlineRequest?,
         token: String,
+        compatibilityMode: Boolean = false,
     ): FillResponse {
         val title = context.getString(R.string.autofill_unlock_title)
         val subtitle = context.getString(R.string.autofill_unlock_subtitle, host)
@@ -119,7 +121,7 @@ object FillResponses {
         } else {
             builder.setAuthentication(ids, authPendingIntent.intentSender, presentation)
         }
-        addSaveInfo(builder, form)
+        addSaveInfo(builder, form, compatibilityMode)
         return builder.build()
     }
 
@@ -170,8 +172,24 @@ object FillResponses {
      * Ask the framework to offer saving what the user typed, so a login
      * created in the browser can become an entry here. Nothing is written
      * without the confirmation screen in [AutofillSaveActivity].
+     *
+     * Never offered for a compatibility-mode request. Android derives those
+     * fields from the accessibility tree, where a password reads as whatever
+     * the browser *renders* — `••••` rather than what was typed — and
+     * `AutofillService`'s own documentation says not to put such a field in a
+     * `SaveInfo`. Saving one would write a row of bullets into the vault
+     * desktop pw shares, and this is the only place to refuse: a `SaveRequest`
+     * carries no flags, so by the time a save arrives there is nothing left to
+     * tell it apart from an ordinary one. The platform's suggested test — does
+     * the field's input type have password flags — cannot help either, because
+     * the compatibility path sets no input type at all.
      */
-    private fun addSaveInfo(builder: FillResponse.Builder, form: ParsedForm) {
+    private fun addSaveInfo(
+        builder: FillResponse.Builder,
+        form: ParsedForm,
+        compatibilityMode: Boolean,
+    ) {
+        if (compatibilityMode) return
         val passwordId = form.passwordId ?: return
         val type = if (form.usernameId != null) {
             SaveInfo.SAVE_DATA_TYPE_USERNAME or SaveInfo.SAVE_DATA_TYPE_PASSWORD

@@ -10,6 +10,13 @@ internal data class AuthDestination<Id>(
     val usernameId: Id?,
     val passwordId: Id,
     val focusedId: Id?,
+    /**
+     * How the request that raised this offer reached us. Provenance rather
+     * than destination, but the offer is rebuilt after the unlock and the
+     * framework tells a service that only once, on the fill request — so this
+     * is the only thing that survives the round trip to carry it.
+     */
+    val compatibilityMode: Boolean = false,
 ) {
     fun accepts(packageName: String?, trusted: Boolean, scheme: String?, domain: String?,
                 usernameId: Id?, passwordId: Id?): Boolean =

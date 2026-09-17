@@ -1,5 +1,6 @@
 package nu.staldal.pw.autofill
 
+import android.annotation.SuppressLint
 import android.app.assist.AssistStructure
 import android.app.PendingIntent
 import android.content.Intent
@@ -46,10 +47,20 @@ class PwAutofillService : AutofillService() {
         cancellationSignal: CancellationSignal,
         callback: FillCallback,
     ) {
+        // Deliberately unguarded by an SDK check, which is why lint's warning
+        // about the inlined constant is suppressed rather than answered: the
+        // flag became public API in 29, but this is a bit test against a value
+        // the compiler inlines, so on 28 it reads false where the framework
+        // does not set it and true where it does — which is the safe way round
+        // for what depends on it. Compatibility mode is never requested (see
+        // res/xml/autofill_service.xml); this only recognises one that arrives.
+        @SuppressLint("InlinedApi")
+        val compatibilityMode =
+            request.flags and FillRequest.FLAG_COMPATIBILITY_MODE_REQUEST != 0
         val context = request.fillContexts.lastOrNull()
         val structure = context?.structure
         if (structure == null) {
-            FillDiagnostics.record(null, FillOutcome.NO_STRUCTURE)
+            FillDiagnostics.record(null, FillOutcome.NO_STRUCTURE, compatibilityMode)
             callback.onSuccess(null)
             return
         }
@@ -63,7 +74,7 @@ class PwAutofillService : AutofillService() {
             val diagnosis = form.diagnosis
             diagnosis.refusal?.let {
                 FillDiagnostics.record(
-                    requester, FillDiagnostics.outcomeOf(it),
+                    requester, FillDiagnostics.outcomeOf(it), compatibilityMode,
                     diagnosis.focusedScheme, diagnosis.focusedHost, diagnosis.classifiedFields,
                 )
             }
@@ -77,6 +88,7 @@ class PwAutofillService : AutofillService() {
                 requester,
                 if (eligibility.trusted) FillOutcome.INELIGIBLE_ORIGIN
                 else FillOutcome.UNTRUSTED_BROWSER,
+                compatibilityMode,
                 form.webScheme, form.webDomain, form.diagnosis.classifiedFields,
             )
             callback.onSuccess(null)
@@ -84,6 +96,7 @@ class PwAutofillService : AutofillService() {
         }
 
         if (cancellationSignal.isCanceled) {
+            recordCancellation(requester, compatibilityMode, form, host)
             callback.onSuccess(null)
             return
         }
@@ -91,16 +104,17 @@ class PwAutofillService : AutofillService() {
         val inline = InlineRequest.from(request)
         val entries = app.repository.entriesOrNull()
         val response = when {
-            entries != null -> FillResponses.forEntries(this, form, host, entries, inline)
+            entries != null ->
+                FillResponses.forEntries(this, form, host, entries, inline, compatibilityMode)
             // No vault yet: offer nothing rather than an unlock prompt for a
             // vault that does not exist.
             app.repository.vaultExists() -> {
                 // eligibleHost and the passwordId check above established these.
                 val token = AutofillAuthRequests.store.register(AuthDestination(
                     requireNotNull(structure.activityComponent).packageName, host, form.usernameId,
-                    requireNotNull(form.passwordId), focusedId))
+                    requireNotNull(form.passwordId), focusedId, compatibilityMode))
                 authToken = token
-                FillResponses.locked(this, form, host, inline, token)
+                FillResponses.locked(this, form, host, inline, token, compatibilityMode)
             }
             else -> null
         }
@@ -108,6 +122,7 @@ class PwAutofillService : AutofillService() {
         // of a published offer or its authentication activity.
         if (cancellationSignal.isCanceled) {
             authToken?.let { AutofillAuthRequests.store.cancel(it) }
+            recordCancellation(requester, compatibilityMode, form, host)
             callback.onSuccess(null)
         } else {
             FillDiagnostics.record(
@@ -118,6 +133,7 @@ class PwAutofillService : AutofillService() {
                     entries == null -> FillOutcome.UNLOCK_OFFERED
                     else -> FillOutcome.OFFERED
                 },
+                compatibilityMode,
                 form.webScheme, host, form.diagnosis.classifiedFields,
             )
             callback.onSuccess(response)
@@ -155,6 +171,29 @@ class PwAutofillService : AutofillService() {
         )
         callback.onSuccess(pendingIntent.intentSender)
     }
+
+    /**
+     * A request the framework withdrew while pw was answering it. Not a
+     * refusal, but it has to be recorded for the same reason the refusals are:
+     * the user sees nothing appear, and "pw declined" and "pw never got to
+     * finish" have different fixes. Tapping a field is exactly when a
+     * cancellation is likely — the keyboard arrives, the page reflows, and the
+     * framework reissues the request — so without this the most interesting
+     * case looks identical to the browser never asking at all.
+     *
+     * It closes the gap only as far as the two checkpoints around the fill
+     * computation: a request cancelled before this service was called, or
+     * between the checks, still leaves no record. Nothing here can see that.
+     */
+    private fun recordCancellation(
+        requester: String?,
+        compatibilityMode: Boolean,
+        form: ParsedForm,
+        host: String,
+    ) = FillDiagnostics.record(
+        requester, FillOutcome.REQUEST_CANCELLED, compatibilityMode,
+        form.webScheme, host, form.diagnosis.classifiedFields,
+    )
 
     /**
      * The page's hostname when this request may be answered at all: a trusted

@@ -298,12 +298,38 @@ judged it — that is what makes a missing scheme visible, and it is never used
 to decide a fill. A request that got as far as matching shows the normalized
 host instead, which is the one the entries were compared against.
 
-A common first answer it gives is that no record appears at all. That means the
-browser never asked pw, which is a setting inside the browser rather than
-anything in pw: Chrome has *Settings → Autofill services → Autofill using
-another service*, and Samsung Internet has its own autofill provider choice
+A common first answer it gives is that no record appears at all. That almost
+always means the browser never asked pw, which is a setting inside the browser
+rather than anything in pw: Chrome has *Settings → Autofill services → Autofill
+using another service*, and Samsung Internet has its own autofill provider choice
 that defaults to Samsung Pass. Android's own **Settings → Use pw for autofill**
-has to be set too.
+has to be set too. Note that what those browser settings need is pw *selected*,
+not their own autofill switched off: a browser with autofill disabled outright
+stops calling the framework, which looks the same from here.
+
+What the remaining case looks like is **the framework withdrew the request**.
+Tapping a field is when that is most likely — the keyboard arrives, the page
+reflows, and Android reissues the request — and it used to be recorded as
+nothing at all, indistinguishable from never being asked. It now has its own
+outcome. A request cancelled before pw was called still leaves no record; that
+one is only visible in `adb shell dumpsys autofill`, which shows whether a
+session exists for the browser.
+
+The diagnostic also says whether Android marked the request as **compatibility
+mode**. pw registers no browser for that mode. It asks the platform to derive a
+browser's fields from its accessibility tree instead, and while such a tree says
+enough for pw to recognise a password box, it declares no origin anywhere: the
+only web address the framework can attach is the browser's URL bar text, which
+carries no `https:` whenever the address bar shows a bare hostname — that is,
+whenever you are looking at the page rather than the address bar. Filling from
+it would mean releasing a password to a page pw cannot identify, and paying for
+that with an accessibility bridge over every page the browser renders. If a
+device sends such a request anyway, pw applies the normal rules, the
+flag makes that visible rather than silently weakening them, and pw offers no
+*save*: a password read from an accessibility tree is the masked `••••` the
+page renders, and storing that would corrupt an entry the desktop shares.
+`adb shell dumpsys autofill` shows the framework's compatibility-mode state and
+allowlist.
 
 ### Matching parity with the desktop
 
@@ -351,6 +377,7 @@ app unchanged.
 | A compromised browser reading the vault | The browser never receives the vault, the passphrase, or any entry it did not match — only the username and password of the entry you picked, for the field you picked it in. |
 | Adjacent forms or frames causing the wrong account to be filled | Exactly one candidate field must be focused. On Android 9 (API 28), this requires the browser to report the node focus flag; browsers that omit it receive no offer. Android 10+ uses the framework focused ID. Pairing requires the same eligible origin and enclosing HTML form, or immediate parent container when no form is reported. Multiple password fields (including password confirmation on registration forms) are refused when the username is focused; focusing the intended password still works. Ambiguous usernames are omitted. Missing container metadata permits only a focused password, without a username. A username field that identifies itself outranks position; when none does, the nearest text input preceding the password in the same form is used, never one after it and never one in another form or origin. These boundaries depend on the form/container tree the browser reports; a flattened tree cannot distinguish unreported forms. |
 | A cross-origin iframe collecting the outer page's credential | The origin is taken from the password field's own node, not from the page as a whole, and a username field on a different origin is dropped rather than filled. A new origin declaration replaces both scheme and domain, including missing components. A field's own origin annotation — browsers attach one to each field of a form that spans frames — settles that field's origin but not which form it belongs to; a document boundary still resets the enclosing form for everything below it, and pairing requires the same origin as well as the same container, so neither check alone carries the boundary. |
+| An accessibility-derived view of a browser's pages | pw registers no browser for Android's autofill compatibility mode, so it asks for none. Such a tree declares no origin — the only address in it is the browser's URL bar text, which usually has no scheme — so the page a password would go to cannot be identified, which is exactly what the rules above turn on. A request that arrives marked compatibility mode anyway is judged by those same rules, is shown as such in the diagnostic, and is never offered a save, because the password in it is the masked text the page renders. |
 | Another app reading the vault file | It lives in the app's private storage, owner-only, and is never backed up to the cloud or transferred to a new device (`backup_rules.xml`). |
 | Screenshots, the recents thumbnail, screen recording | Every pw window sets `FLAG_SECURE`. |
 | A shoulder-surfer, screenshot, or Logcat reader observes the refusal diagnostic | It is off by default and holds no field contents and no entry names — the requesting package, the claimed origin, a field count and the decision. While on, it names hosts you focused a password field on both in pw's memory and under the `pw-autofill` Logcat tag. Turning it off clears pw's copy; Android controls Logcat retention. |

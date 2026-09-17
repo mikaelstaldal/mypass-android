@@ -606,6 +606,7 @@ private fun FillDiagnosticsSetting(enabled: Boolean, onEnabled: (Boolean) -> Uni
             Text(record.outcome.description, style = MaterialTheme.typography.bodySmall)
             Text(
                 "from ${record.browserPackage ?: "(no package)"} · " +
+                    (if (record.compatibilityMode) "compatibility mode · " else "") +
                     "scheme ${record.scheme ?: "(none)"} · host ${record.host ?: "(none)"} · " +
                     "${record.classifiedFields} classified field(s)",
                 style = MaterialTheme.typography.bodySmall,

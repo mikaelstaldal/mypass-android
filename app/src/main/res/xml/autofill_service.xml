@@ -1,3 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  No browser is registered here for Android's autofill compatibility mode, and
+  that is a decision rather than an omission. The tree the platform derives from
+  a browser's accessibility nodes does carry enough to recognise a password box,
+  but it declares no origin at all: the only web address the framework can
+  attach is the browser's URL bar text, which has no scheme whenever the address
+  bar shows a bare hostname — which is whenever the user is looking at the page
+  rather than the address bar. Filling from it would mean releasing a password
+  to a page pw cannot identify, and paying for that with an accessibility bridge
+  over every page the browser renders.
+  AutofillServiceMetadataTest keeps it out; README explains it.
+-->
 <autofill-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:settingsActivity="nu.staldal.pw.MainActivity" />

@@ -20,8 +20,8 @@ class FillDiagnosticsTest {
         FillDiagnostics.setDiagnosticSink(null)
     }
 
-    private fun record(host: String) =
-        FillDiagnostics.record("com.example.browser", FillOutcome.NO_MATCHING_ENTRY, "https", host, 2)
+    private fun record(host: String) = FillDiagnostics.record(
+        "com.example.browser", FillOutcome.NO_MATCHING_ENTRY, false, "https", host, 2)
 
     @Test fun recordsNothingUntilSwitchedOn() {
         record("example.com")
@@ -56,22 +56,41 @@ class FillDiagnosticsTest {
     @Test fun logMessageContainsOnlyTheRecordedMetadata() {
         val record = FillRecord(
             "com.example.browser", FillOutcome.INELIGIBLE_ORIGIN,
-            null, "example.com", 2,
+            false, null, "example.com", 2,
         )
         assertEquals(
             "outcome=INELIGIBLE_ORIGIN package=\"com.example.browser\" " +
+                "compatibilityMode=false " +
                 "scheme=(none) host=\"example.com\" classifiedFields=2",
             FillDiagnostics.logMessage(record),
+        )
+    }
+
+    /**
+     * The flag is the framework's, not the browser's, so it is the one piece of
+     * a record that needs no escaping — and the one a reader needs to see to
+     * know why an accessibility-derived request classified nothing.
+     */
+    @Test fun logMessageReportsACompatibilityModeRequest() {
+        val message = FillDiagnostics.logMessage(FillRecord(
+            "com.example.browser", FillOutcome.NO_CLASSIFIED_FIELD,
+            true, null, null, 0,
+        ))
+        assertEquals(
+            "outcome=NO_CLASSIFIED_FIELD package=\"com.example.browser\" " +
+                "compatibilityMode=true scheme=(none) host=(none) classifiedFields=0",
+            message,
         )
     }
 
     @Test fun logMessageEscapesUntrustedMetadataOntoOneLine() {
         val message = FillDiagnostics.logMessage(FillRecord(
             "com.example\\\"browser", FillOutcome.INELIGIBLE_ORIGIN,
-            "ht\ttp", "first.example\r\nI/pw-autofill: outcome=OFFERED", 1,
+            false, "ht\ttp", "first.example\r\nI/pw-autofill: outcome=OFFERED", 1,
         ))
         assertEquals(
             "outcome=INELIGIBLE_ORIGIN package=\"com.example\\\\\\\"browser\" " +
+                "compatibilityMode=false " +
                 "scheme=\"ht\\ttp\" " +
                 "host=\"first.example\\r\\nI/pw-autofill: outcome=OFFERED\" " +
                 "classifiedFields=1",
@@ -109,10 +128,12 @@ class FillDiagnosticsTest {
         assertEquals("https", record.scheme)
         assertEquals("example.com", record.host)
         assertEquals(2, record.classifiedFields)
+        assertFalse(record.compatibilityMode)
         // Named rather than counted, so that adding somewhere to put a field
         // value or an entry name has to be a deliberate edit to this list.
         assertEquals(
-            setOf("browserPackage", "outcome", "scheme", "host", "classifiedFields"),
+            setOf("browserPackage", "outcome", "compatibilityMode", "scheme", "host",
+                "classifiedFields"),
             FillRecord::class.java.declaredFields
                 .filterNot { Modifier.isStatic(it.modifiers) }.map { it.name }.toSet(),
         )
@@ -124,6 +145,17 @@ class FillDiagnosticsTest {
             val outcome = FillDiagnostics.outcomeOf(refusal)
             assertTrue(outcome.description.isNotBlank())
             assertFalse(outcome == FillOutcome.OFFERED)
+        }
+    }
+
+    /**
+     * The description is the whole user-facing point of an outcome — a record
+     * that cannot say what it means explains nothing — and the screen shows it
+     * verbatim, so a new outcome must bring one.
+     */
+    @Test fun everyOutcomeSaysWhatItMeans() {
+        for (outcome in FillOutcome.entries) {
+            assertTrue(outcome.name, outcome.description.isNotBlank())
         }
     }
 }
