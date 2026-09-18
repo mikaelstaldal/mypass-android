@@ -109,6 +109,28 @@ object Matching {
     }
 
     /**
+     * Entries releasable to one HTTP-authentication protection space. Host
+     * matching is exact: a credential for a parent domain must never be
+     * released silently to a subdomain. An entry naming [realm] wins over an
+     * unscoped entry; otherwise an unscoped entry is the backwards-compatible
+     * wildcard. A request without a realm matches only unscoped entries.
+     *
+     * This is desktop pw's `exactly_matching_entries`, kept here as a domain
+     * rule so Android integration components do not invent matching policy.
+     */
+    fun exactlyMatchingEntries(
+        hostname: String,
+        realm: String?,
+        entries: List<PasswordEntry>,
+    ): List<PasswordEntry> {
+        val onHost = entriesOnHost(hostname, entries)
+        val named = realm?.let { requested ->
+            onHost.filter { it.realm == requested }
+        }.orEmpty()
+        return named.ifEmpty { onHost.filter { it.realm == null } }
+    }
+
+    /**
      * UTS #46 (IDNA2008) non-transitional processing, the same profile Rust's
      * `idna` crate — and therefore desktop `pw` — applies, and the same one
      * browsers apply when they resolve a name.

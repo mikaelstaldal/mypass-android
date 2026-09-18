@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">pw</string>
+    <string name="fetch_password_permission_label">Fetch passwords from pw</string>
+    <string name="fetch_password_activity_label">Choose a pw password</string>
 
     <string name="autofill_service_label">pw</string>
     <string name="autofill_unlock_title">Unlock pw</string>

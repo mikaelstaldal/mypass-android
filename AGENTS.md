@@ -88,6 +88,12 @@ the two can be read side by side:
    enabled the same metadata is emitted under the `pw-autofill` Logcat tag;
    never add secrets to it. `FormSelector` reports which rule refused through
    `FormDiagnosis`, which must never feed a fill decision.
+6. **`integration/`** — a signature-permission-gated activity API for other
+   apps signed with the same key. A unique match returns immediately after any
+   necessary unlock; only ambiguous matches prompt for a choice. Name requests
+   are exact; URL requests use the desktop's exact-host and realm-narrowing
+   rules from `Matching`. Keep request validation and selection Android-free
+   and tested.
 
 Errors are layered the same way: `ScryptFormatException` → `VaultException` →
 `PwException`, with `PwRepository.mapVaultException` mapping low-level failures
@@ -156,10 +162,11 @@ bearing; do not relax one without saying so in README.md's security table:
   is the only place that can refuse it — `SaveRequest` carries no flags — which
   is why the flag rides along in `AuthDestination` through the unlock.
 
-Android's autofill framework never sees HTTP authentication challenges, so the
-desktop's `exactly_matching_entries` / realm-narrowing path has no counterpart
-here. The `realm` field is still stored, edited and round-tripped for desktop
-interop — do not drop it.
+Android's autofill framework never sees HTTP authentication challenges. The
+same-signing-key integration API is the only Android counterpart to the
+desktop's `exactly_matching_entries` / realm-narrowing path; autofill itself
+must not use it. The `realm` field is also stored, edited and round-tripped for
+desktop interop — do not drop it.
 
 ## Testing conventions
 

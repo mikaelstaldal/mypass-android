@@ -21,6 +21,9 @@ class MatchingTest {
         url = url,
     )
 
+    private fun withRealm(name: String, url: String, realm: String?) =
+        withUrl(name, url).copy(realm = realm)
+
     /**
      * Run [Matching.matchingEntries] for [hostname] over entries whose `url` is
      * each of [urls]. The entry name is deliberately unrelated to the host
@@ -253,6 +256,65 @@ class MatchingTest {
             ).size,
         )
         assertTrue(Matching.entriesOnHost("", listOf(withUrl("a", "example.com"))).isEmpty())
+    }
+
+    @Test
+    fun realmSelectsTheEntryNamingIt() {
+        val entries = listOf(
+            withRealm("admin", "example.com", "Admin"),
+            withRealm("wiki", "example.com", "Wiki"),
+        )
+        assertEquals(
+            listOf("admin"),
+            Matching.exactlyMatchingEntries("example.com", "Admin", entries).map { it.name },
+        )
+    }
+
+    @Test
+    fun aRealmedEntryIsNeverReleasedToAnotherRealm() {
+        val entries = listOf(withRealm("admin", "example.com", "Admin"))
+        assertTrue(Matching.exactlyMatchingEntries("example.com", "Wiki", entries).isEmpty())
+        assertTrue(Matching.exactlyMatchingEntries("example.com", null, entries).isEmpty())
+    }
+
+    @Test
+    fun anUnrealmedEntryIsAWildcardOverItsHost() {
+        val entries = listOf(withRealm("site", "example.com", null))
+        for (realm in listOf("Admin", "Wiki", null)) {
+            assertEquals(
+                listOf("site"),
+                Matching.exactlyMatchingEntries("example.com", realm, entries).map { it.name },
+            )
+        }
+    }
+
+    @Test
+    fun aNamedRealmWinsOverTheWildcard() {
+        val entries = listOf(
+            withRealm("catch-all", "example.com", null),
+            withRealm("admin", "example.com", "Admin"),
+        )
+        assertEquals(
+            listOf("admin"),
+            Matching.exactlyMatchingEntries("example.com", "Admin", entries).map { it.name },
+        )
+        assertEquals(
+            listOf("catch-all"),
+            Matching.exactlyMatchingEntries("example.com", "Other", entries).map { it.name },
+        )
+    }
+
+    @Test
+    fun realmsAreComparedAsExactStrings() {
+        val entries = listOf(withRealm("admin", "example.com", "Admin"))
+        assertTrue(Matching.exactlyMatchingEntries("example.com", "admin", entries).isEmpty())
+        assertTrue(Matching.exactlyMatchingEntries("example.com", "Admin ", entries).isEmpty())
+    }
+
+    @Test
+    fun realmDoesNotLoosenHostMatching() {
+        val entries = listOf(withRealm("admin", "example.com", "Admin"))
+        assertTrue(Matching.exactlyMatchingEntries("evil.example.com", "Admin", entries).isEmpty())
     }
 
     @Test

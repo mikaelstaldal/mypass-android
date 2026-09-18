@@ -355,21 +355,23 @@ diverged from `../pw`:
   only exact matches. The list's own rule is that an unrecognised suffix is
   `*` — one label — so `Matching` fills that in, as Rust's `psl` does.
 
-### What has no Android counterpart
+### HTTP authentication and trusted-app integration
 
 The desktop integration also answers HTTP authentication challenges (the
 browser's own username/password dialog), with a stricter exact-host match and
 a `realm` to tell protection spaces apart. Android's autofill framework never
-sees those challenges — the browser answers them itself — so there is nothing
-for pw to hook into. The `realm` field is still shown, edited and
-round-tripped, so a vault shared with the desktop survives a write from this
-app unchanged.
+sees those challenges — the browser answers them itself. Apps signed with the
+same key as pw can instead launch pw's password activity, which uses that
+exact-host and realm rule. See [INTEGRATION.md](INTEGRATION.md). The
+`realm` field is shown, edited and round-tripped, so a vault shared with the
+desktop survives a write from this app unchanged.
 
 ### Security model
 
 | Threat | Mitigation |
 |---|---|
 | A malicious app claiming to be a web page on your bank's domain | A web address counts only from a package with a pinned or explicitly enrolled signing certificate. A sideloaded replacement under a known browser name with another certificate gets no fill or save offer. An explicitly enrolled or compromised browser can still lie about any website. |
+| Another app asking pw for a credential directly | The exported integration activity requires a signature-level permission, so Android admits only apps signed with pw's signing identity. A unique match is returned immediately once the vault is unlocked; the user chooses only when several site entries match. A successful exact-name lookup is always unique and therefore never prompts after any necessary unlock. Sharing a signing key is an install-time, non-revocable trust decision: any app holding that key can retrieve unique matches without a separate confirmation gesture, so it must be protected like the pw release key. URL requests are HTTPS-only (apart from loopback development), exact-host, and realm-aware. Exact-name requests deliberately bypass site matching for trusted native-app use. |
 | A malicious page harvesting a fill | Nothing is filled without you tapping the suggestion; there is no gesture-less path at all on Android, since the framework only asks when a field is focused. |
 | An attacker-controlled subdomain of a site you have an entry for | Parent-domain matching is bounded by the Public Suffix List, and only ever climbs *up* from the visited host — an entry for `login.example.com` is never released to `example.com`. |
 | Phishing domain (`github.com.evil.example`) | Suffix matching at label boundaries bounded by the Public Suffix List — only `evil.example`'s own entries can match. |
@@ -465,6 +467,7 @@ side by side:
 | `data/Matching.kt`, `data/Validation.kt`, `data/PasswordGenerator.kt`, `data/PwRepository.kt` | `src/lib.rs` |
 | `ui/**`, `MainActivity` | `src/main.rs` (the CLI) |
 | `autofill/**` | `src/bin/pw-browser-host/` + `webextension/` |
+| `integration/**` | `src/lib.rs` exact-name and exact-host/realm lookup rules |
 
 Errors are layered the same way too: `ScryptFormatException` →
 `VaultException` → `PwException`, with wrong-passphrase, corrupt-vault and I/O

@@ -28,10 +28,10 @@ data class PasswordEntry(
      * a single protection space.
      *
      * Android's autofill framework never sees an HTTP authentication
-     * challenge — the browser answers those with its own dialog — so nothing
-     * in this app matches on it. It is kept, edited and round-tripped so that
-     * a vault shared with desktop `pw`, whose Firefox integration does use it,
-     * survives a write from this app unchanged.
+     * challenge — the browser answers those with its own dialog. The
+     * same-signing-key integration API can match a realm supplied by a trusted
+     * client, and the field is also kept, edited and round-tripped for desktop
+     * interoperability.
      */
     val realm: String? = null,
 )
