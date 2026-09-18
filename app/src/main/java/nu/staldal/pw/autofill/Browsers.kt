@@ -22,12 +22,6 @@ object Browsers {
     // credential-browser allowlist (release builds only):
     // https://firefox-source-docs.mozilla.org/mobile/android/fenix/certificates.html
     // https://www.gstatic.com/gpm-passkeys-privileged-apps/apps.json
-    // Exclude Samsung C8A2...2AB8 even though Google labels it release:
-    // Samsung Account (com.osp.app.signin) annotates its fingerprint list
-    // "debug,platform,R_platformkey", positionally marking C8A2... as debug
-    // and 34DF... as a platform key. This is an inference from a free-form
-    // comment, not a browser-specific build label; err on the side of exclusion.
-    // https://account.samsung.com/.well-known/assetlinks.json
     // Offline upstream excerpt: app/src/test/resources/browser-publishers.json
     val KNOWN: Map<String, Set<String>> = mapOf(
         "org.mozilla.firefox" to setOf("5004779088E7F988D5BC5CC5F8798FEBF4F8CD084A1B2A46EFD4C8EE4AEAF211"),
@@ -43,8 +37,6 @@ object Browsers {
             "3D7A1223019AA39D9EA0E3436AB7C0896BFB4FB679F4DE5FE7C23F326C8F994A",
         ),
         "com.chrome.canary" to setOf("2019DFA1FB23EFBF70C5BCD1443C5BEAB04F3F2FF4366E9AC1E3457639A24CFC"),
-        "com.sec.android.app.sbrowser" to setOf("34DF0E7A9F1CF1892E45C056B4973CD81CCF148A4050D11AEA4AC5A65F900A42"),
-        "com.sec.android.app.sbrowser.beta" to setOf("34DF0E7A9F1CF1892E45C056B4973CD81CCF148A4050D11AEA4AC5A65F900A42"),
     )
 
     data class Identity(val current: Set<String>, val history: Set<String>)

@@ -95,7 +95,6 @@ class BrowsersTest {
     @Test fun releasePinsMatchOfflinePublisherList() {
         val snapshot = javaClass.getResourceAsStream("/browser-publishers.json")!!
             .bufferedReader().use { Json.parseToJsonElement(it.readText()).jsonObject }
-        val samsungDebug = "C8A2E9BCCF597C2FB6DC66BEE293FC13F2FC47EC77BC6B2B0D52C11F51192AB8"
         val apps = snapshot.getValue("apps").jsonArray
         val recordedPackages = apps.map {
             it.jsonObject.getValue("info").jsonObject.getValue("package_name").jsonPrimitive.content
@@ -109,7 +108,7 @@ class BrowsersTest {
             val release = info.getValue("signatures").jsonArray.mapNotNull { signature ->
                 val value = signature.jsonObject
                 val digest = value.getValue("cert_fingerprint_sha256").jsonPrimitive.content.replace(":", "")
-                if (value.getValue("build").jsonPrimitive.content == "release" && digest != samsungDebug) digest else null
+                if (value.getValue("build").jsonPrimitive.content == "release") digest else null
             }.toSet()
             val actual = Browsers.KNOWN.getValue(pkg)
             assertEquals(pkg, release, actual)
@@ -118,15 +117,13 @@ class BrowsersTest {
 
     @Test fun debugCertificatesAndOtherPublishersAreRejected() {
         val googleDebug = "1975B2F17177BC89A5DFF31F9E64A6CAE281A53DC1D1D59B1D147FE1C82AFA00"
-        val samsungDebug = "C8A2E9BCCF597C2FB6DC66BEE293FC13F2FC47EC77BC6B2B0D52C11F51192AB8"
         Browsers.KNOWN.keys.forEach { pkg ->
             assertFalse(pkg, Browsers.isTrustedBrowser(pkg, identity(googleDebug), ""))
-            assertFalse(pkg, Browsers.isTrustedBrowser(pkg, identity(samsungDebug), ""))
         }
         val chrome = Browsers.KNOWN.getValue("com.android.chrome").single()
-        val samsung = Browsers.KNOWN.getValue("com.sec.android.app.sbrowser").single()
-        assertFalse(Browsers.isTrustedBrowser("com.android.chrome", identity(samsung), ""))
-        assertFalse(Browsers.isTrustedBrowser("com.sec.android.app.sbrowser", identity(chrome), ""))
+        val firefox = Browsers.KNOWN.getValue("org.mozilla.firefox").single()
+        assertFalse(Browsers.isTrustedBrowser("org.mozilla.firefox", identity(chrome), ""))
+        assertFalse(Browsers.isTrustedBrowser("com.android.chrome", identity(firefox), ""))
         assertFalse(Browsers.isTrustedBrowser("com.example.browser", identity(chrome), ""))
         assertTrue(Browsers.isTrustedBrowser("com.android.chrome", identity(next, setOf(chrome)), ""))
     }

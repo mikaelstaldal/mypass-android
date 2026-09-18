@@ -225,23 +225,13 @@ removed rather than silently trusting an installed replacement.
 
 - Firefox, Firefox Beta, and Firefox Nightly (`org.mozilla.fenix`).
 - Chrome Stable, Beta, Dev, and Canary.
-- Samsung Internet and Samsung Internet Beta.
 
 Firefox pins come from [Mozilla's certificate documentation](https://firefox-source-docs.mozilla.org/mobile/android/fenix/certificates.html).
-Chrome and Samsung Internet pins come from
+Chrome pins come from
 [Google's curated credential-browser allowlist](https://www.gstatic.com/gpm-passkeys-privileged-apps/apps.json),
 retrieved on 2026-09-15, using its release entries. Google is the sole source for
-the Chrome/Samsung browser package-to-certificate associations; this is not a
-claim that each browser publisher independently documented those associations.
-Samsung's `C8A2…2AB8` key is excluded despite Google's release label: the
-[Samsung Account assetlinks](https://account.samsung.com/.well-known/assetlinks.json)
-entry for `com.osp.app.signin` annotates its fingerprint list
-`debug,platform,R_platformkey`. Read positionally, this suggests `C8A2…2AB8` is
-a debug key and the retained `34DF…0A42` is a Samsung platform key. This is an
-inference from a free-form comment for Samsung Account, not a browser-specific
-build label, so pw errs on the side of excluding the suspected debug key.
-The platform certificate may sign other Samsung apps, but trust remains scoped
-to the two Samsung Internet packages. Different distributions may need enrollment.
+the Chrome package-to-certificate associations; this is not a claim that the
+browser publisher independently documented those associations.
 The tests keep an offline excerpt of Google's list to verify pin transcription;
 builds and autofill never fetch that list automatically.
 
@@ -304,9 +294,8 @@ host instead, which is the one the entries were compared against.
 A common first answer it gives is that no record appears at all. That almost
 always means the browser never asked pw, which is a setting inside the browser
 rather than anything in pw: Chrome has *Settings → Autofill services → Autofill
-using another service*, and Samsung Internet has its own autofill provider choice
-that defaults to Samsung Pass. Android's own **Settings → Use pw for autofill**
-has to be set too. Note that what those browser settings need is pw *selected*,
+using another service*. Android's own **Settings → Use pw for autofill**
+has to be set too. Note that what that browser setting needs is pw *selected*,
 not their own autofill switched off: a browser with autofill disabled outright
 stops calling the framework, which looks the same from here.
 

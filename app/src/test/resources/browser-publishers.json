@@ -1,5 +1,5 @@
 {
-  "note": "Chrome and Samsung Internet excerpt only. Mozilla packages are intentionally excluded; their existing pins come from Mozilla certificate documentation.",
+  "note": "Chrome excerpt only. Mozilla packages are intentionally excluded; their existing pins come from Mozilla certificate documentation.",
   "source": "https://www.gstatic.com/gpm-passkeys-privileged-apps/apps.json",
   "retrieved": "2026-09-15",
   "source_sha256": "50224a5c9de4b12d243b77ef3c0a2983dfaafe2c111c077d0dc9cab7b45c93c2",
@@ -60,38 +60,6 @@
           {
             "build": "release",
             "cert_fingerprint_sha256": "20:19:DF:A1:FB:23:EF:BF:70:C5:BC:D1:44:3C:5B:EA:B0:4F:3F:2F:F4:36:6E:9A:C1:E3:45:76:39:A2:4C:FC"
-          }
-        ]
-      }
-    },
-    {
-      "type": "android",
-      "info": {
-        "package_name": "com.sec.android.app.sbrowser",
-        "signatures": [
-          {
-            "build": "release",
-            "cert_fingerprint_sha256": "C8:A2:E9:BC:CF:59:7C:2F:B6:DC:66:BE:E2:93:FC:13:F2:FC:47:EC:77:BC:6B:2B:0D:52:C1:1F:51:19:2A:B8"
-          },
-          {
-            "build": "release",
-            "cert_fingerprint_sha256": "34:DF:0E:7A:9F:1C:F1:89:2E:45:C0:56:B4:97:3C:D8:1C:CF:14:8A:40:50:D1:1A:EA:4A:C5:A6:5F:90:0A:42"
-          }
-        ]
-      }
-    },
-    {
-      "type": "android",
-      "info": {
-        "package_name": "com.sec.android.app.sbrowser.beta",
-        "signatures": [
-          {
-            "build": "release",
-            "cert_fingerprint_sha256": "C8:A2:E9:BC:CF:59:7C:2F:B6:DC:66:BE:E2:93:FC:13:F2:FC:47:EC:77:BC:6B:2B:0D:52:C1:1F:51:19:2A:B8"
-          },
-          {
-            "build": "release",
-            "cert_fingerprint_sha256": "34:DF:0E:7A:9F:1C:F1:89:2E:45:C0:56:B4:97:3C:D8:1C:CF:14:8A:40:50:D1:1A:EA:4A:C5:A6:5F:90:0A:42"
           }
         ]
       }
