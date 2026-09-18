@@ -79,4 +79,18 @@ class AuthRequestsTest {
         assertEquals(approved, store.get(second))
         assertEquals(approved, store.get(third))
     }
+
+    @Test fun genericStoreHasTheSameExpiryCancellationAndOneUseRules() {
+        var time = 0L
+        val store = ExpiringRequestStore<String>({ time }, lifetimeMillis = 10, capacity = 2)
+        val cancelled = store.register("cancelled")
+        store.cancel(cancelled)
+        assertNull(store.get(cancelled))
+        val consumed = store.register("consumed")
+        assertEquals("consumed", store.take(consumed))
+        assertNull(store.take(consumed))
+        val expired = store.register("expired")
+        time = 10
+        assertNull(store.get(expired))
+    }
 }

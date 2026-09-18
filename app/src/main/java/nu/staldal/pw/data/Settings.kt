@@ -46,6 +46,8 @@ data class SettingsState(
      * Legacy package-only settings are intentionally never migrated.
      */
     val browserCertificatePins: String = "",
+    /** Browser signing identities the user explicitly declined to trust. */
+    val rejectedBrowserCertificates: String = "",
     /**
      * Record why recent autofill requests produced no offer. Off by default;
      * the records live in memory and are emitted to Logcat, hold no field
@@ -82,6 +84,7 @@ class Settings(context: Context) {
             scryptLogN = (prefs[SCRYPT_LOG_N] ?: ScryptDefaults.LOG_N)
                 .coerceIn(ScryptDefaults.MIN_LOG_N, ScryptDefaults.MAX_LOG_N),
             browserCertificatePins = prefs[BROWSER_CERTIFICATE_PINS] ?: "",
+            rejectedBrowserCertificates = prefs[REJECTED_BROWSER_CERTIFICATES] ?: "",
             autofillDiagnostics = prefs[AUTOFILL_DIAGNOSTICS] ?: false,
         )
     }
@@ -108,6 +111,9 @@ class Settings(context: Context) {
         }
     }
 
+    suspend fun setRejectedBrowserCertificates(value: String) =
+        put(REJECTED_BROWSER_CERTIFICATES, value)
+
     suspend fun setAutofillDiagnostics(value: Boolean) = put(AUTOFILL_DIAGNOSTICS, value)
 
     private suspend fun <T> put(key: Preferences.Key<T>, value: T) {
@@ -122,6 +128,7 @@ class Settings(context: Context) {
         val PASSWORD_CHARSET = stringPreferencesKey("password_charset")
         val SCRYPT_LOG_N = intPreferencesKey("scrypt_log_n")
         val BROWSER_CERTIFICATE_PINS = stringPreferencesKey("browser_certificate_pins_v1")
+        val REJECTED_BROWSER_CERTIFICATES = stringPreferencesKey("rejected_browser_certificates_v1")
         val AUTOFILL_DIAGNOSTICS = booleanPreferencesKey("autofill_diagnostics")
     }
 }

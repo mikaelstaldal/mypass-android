@@ -71,6 +71,13 @@
             android:theme="@style/Theme.Pw.Transparent"
             android:windowSoftInputMode="adjustResize" />
 
+        <activity
+            android:name=".autofill.BrowserEnrollmentActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Pw.Transparent" />
+
         <!-- Opened when the framework offers to save a login. -->
         <activity
             android:name=".autofill.AutofillSaveActivity"

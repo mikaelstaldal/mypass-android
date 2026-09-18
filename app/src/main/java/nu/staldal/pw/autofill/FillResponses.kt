@@ -39,6 +39,23 @@ import nu.staldal.pw.vault.PasswordEntry
 // rather than two.
 object FillResponses {
 
+    fun browserEnrollment(
+        context: Context,
+        form: ParsedForm,
+        packageName: String,
+        token: String,
+    ): FillResponse {
+        val intent = Intent(context, BrowserEnrollmentActivity::class.java)
+            .setData(Uri.Builder().scheme("pw-browser-enrollment").authority("request")
+                .appendPath(token).build())
+        val pendingIntent = PendingIntent.getActivity(
+            context, REQUEST_CODE_ENROLLMENT, intent, PendingIntent.FLAG_MUTABLE)
+        val presentation = remoteViews(context, "Review browser", packageName)
+        return FillResponse.Builder()
+            .setAuthentication(form.autofillIds, pendingIntent.intentSender, presentation)
+            .build()
+    }
+
     /**
      * The datasets for [host], or `null` when nothing matches — which the
      * framework reads as "this service has nothing to offer", leaving the
@@ -240,4 +257,5 @@ object FillResponses {
 
     private const val REQUEST_CODE_AUTH = 1
     private const val REQUEST_CODE_ATTRIBUTION = 2
+    private const val REQUEST_CODE_ENROLLMENT = 4
 }

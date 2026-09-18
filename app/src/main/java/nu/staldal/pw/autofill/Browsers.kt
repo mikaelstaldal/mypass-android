@@ -85,4 +85,13 @@ object Browsers {
     fun remove(value: String, packageName: String): String =
         (parseEnrollments(value) - packageName).entries
             .sortedBy { it.key }.joinToString("\n") { (pkg, pins) -> "$pkg=${pins.sorted().joinToString(",")}" }
+
+    /** A refusal is tied to the installed signing identity, not only its reusable package name. */
+    fun isRejected(packageName: String?, identity: Identity?, rejected: String): Boolean {
+        if (packageName.isNullOrBlank() || identity == null || identity.current.isEmpty()) return false
+        return parseEnrollments(rejected)[packageName] == identity.current
+    }
+
+    fun reject(value: String, packageName: String, identity: Identity): String =
+        enroll(value, packageName, identity)
 }

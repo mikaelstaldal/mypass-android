@@ -251,8 +251,11 @@ package-visibility restrictions). Android-verified single-signer rotation histor
 can link a new key to a pinned one; apps with multiple signers require every
 current signer to be pinned.
 
-Other browsers, rebuilds, and differently signed distributions require
-**Settings → Installed browser package → Review enrollment**. Install from a
+Other browsers, rebuilds, and differently signed distributions can be reviewed
+from pw's autofill suggestion when they first request a fill, or through
+**Settings → Installed browser package → Review enrollment**. The prompt shows
+the requesting site, installed app, package, and SHA-256 signing certificate;
+a known browser package with an unexpected signer is called out explicitly. Install from a
 source you trust, review the package and SHA-256 certificate disclosure, then
 explicitly confirm. An enrolled app may claim **any website** and receive its
 credentials: enrollment identifies the installed publisher, not its honesty.
@@ -370,7 +373,7 @@ desktop survives a write from this app unchanged.
 
 | Threat | Mitigation |
 |---|---|
-| A malicious app claiming to be a web page on your bank's domain | A web address counts only from a package with a pinned or explicitly enrolled signing certificate. A sideloaded replacement under a known browser name with another certificate gets no fill or save offer. An explicitly enrolled or compromised browser can still lie about any website. |
+| A malicious app claiming to be a web page on your bank's domain | A web address counts only from a package with a pinned or explicitly enrolled signing certificate. A sideloaded replacement under a known browser name with another certificate gets no credential or save offer; it can only present a review action that discloses the package and unexpected signer, and credentials remain unavailable unless the user explicitly trusts it. An explicitly enrolled or compromised browser can still lie about any website. |
 | Another app asking pw for a credential directly | The exported integration activity requires a signature-level permission, so Android admits only apps signed with pw's signing identity. A unique match is returned immediately once the vault is unlocked; the user chooses only when several site entries match. A successful exact-name lookup is always unique and therefore never prompts after any necessary unlock. Sharing a signing key is an install-time, non-revocable trust decision: any app holding that key can retrieve unique matches without a separate confirmation gesture, so it must be protected like the pw release key. URL requests are HTTPS-only (apart from loopback development), exact-host, and realm-aware. Exact-name requests deliberately bypass site matching for trusted native-app use. |
 | A malicious page harvesting a fill | Nothing is filled without you tapping the suggestion; there is no gesture-less path at all on Android, since the framework only asks when a field is focused. |
 | An attacker-controlled subdomain of a site you have an entry for | Parent-domain matching is bounded by the Public Suffix List, and only ever climbs *up* from the visited host — an entry for `login.example.com` is never released to `example.com`. |

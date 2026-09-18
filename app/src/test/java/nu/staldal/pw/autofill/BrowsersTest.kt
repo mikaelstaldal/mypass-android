@@ -36,6 +36,14 @@ class BrowsersTest {
         assertFalse(Browsers.isTrustedBrowser("com.example.browser", identity(evil), Browsers.remove(pins, "com.example.browser")))
     }
 
+    @Test fun rejectionIsBoundToPackageAndCurrentSigningIdentity() {
+        val rejected = Browsers.reject("", "com.example.browser", identity(evil))
+        assertTrue(Browsers.isRejected("com.example.browser", identity(evil), rejected))
+        assertFalse(Browsers.isRejected("com.example.other", identity(evil), rejected))
+        assertFalse(Browsers.isRejected("com.example.browser", identity(next), rejected))
+        assertFalse(Browsers.isRejected("com.example.browser", identity(next, setOf(evil)), rejected))
+    }
+
     @Test fun verifiedSingleSignerRotationIsAccepted() {
         val original = Browsers.KNOWN.getValue("org.mozilla.firefox").single()
         assertTrue(Browsers.isTrustedBrowser("org.mozilla.firefox", identity(next, setOf(original, next)), ""))

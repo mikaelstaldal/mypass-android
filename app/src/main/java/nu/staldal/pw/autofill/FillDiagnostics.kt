@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * What became of a fill request. Every value but [OFFERED], [UNLOCK_OFFERED],
- * [NO_VAULT] and [REQUEST_CANCELLED] is a refusal, and the refusals are the
+ * [ENROLLMENT_OFFERED], [NO_VAULT] and [REQUEST_CANCELLED] is a refusal, and the refusals are the
  * point: the autofill framework gives a service no way to say "I declined, and
  * here is why", so from the outside every one of them looks identical —
  * nothing appears.
@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 enum class FillOutcome(val description: String) {
     OFFERED("Offered matching entries."),
     UNLOCK_OFFERED("Offered to unlock the vault."),
+    ENROLLMENT_OFFERED("Offered to review an unrecognized browser publisher."),
     NO_VAULT("No vault on this device yet."),
     REQUEST_CANCELLED("The framework withdrew the request before pw could answer it."),
     NO_STRUCTURE("The framework sent no view structure."),

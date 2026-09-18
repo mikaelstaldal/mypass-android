@@ -14,7 +14,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import nu.staldal.pw.autofill.FillDiagnostics
+import nu.staldal.pw.autofill.Browsers
 import nu.staldal.pw.data.PwRepository
 import nu.staldal.pw.data.Settings
 import nu.staldal.pw.data.SettingsState
@@ -50,9 +53,14 @@ class PwApplication : Application() {
         private set
 
     @Volatile
+    var rejectedBrowserCertificates: String = ""
+        private set
+
+    @Volatile
     private var lockOnBackground: Boolean = false
 
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val browserDecisionLock = Mutex()
 
     override fun onCreate() {
         super.onCreate()
@@ -66,6 +74,7 @@ class PwApplication : Application() {
         // preference blob before publishing this application to the service.
         val initial = runBlocking { settings.state.first() }
         browserCertificatePins = initial.browserCertificatePins
+        rejectedBrowserCertificates = initial.rejectedBrowserCertificates
         FillDiagnostics.setDiagnosticSink { record ->
             Log.i(AUTOFILL_DIAGNOSTIC_TAG, FillDiagnostics.logMessage(record))
         }
@@ -76,6 +85,7 @@ class PwApplication : Application() {
                 repository.autoLockMinutes = state.autoLockMinutes
                 repository.scryptLogN = state.scryptLogN
                 browserCertificatePins = state.browserCertificatePins
+                rejectedBrowserCertificates = state.rejectedBrowserCertificates
                 FillDiagnostics.setEnabled(state.autofillDiagnostics)
                 lockOnBackground = state.lockOnBackground
                 Clipboard.clearAfterSeconds = state.clipboardClearSeconds
@@ -107,6 +117,22 @@ class PwApplication : Application() {
                 repository.enforceAutoLock()
             }
         })
+    }
+
+
+    suspend fun trustBrowser(packageName: String, identity: Browsers.Identity) = browserDecisionLock.withLock {
+        val value = Browsers.enroll(browserCertificatePins, packageName, identity)
+        settings.setBrowserCertificatePins(value)
+        browserCertificatePins = value
+        val rejected = Browsers.remove(rejectedBrowserCertificates, packageName)
+        settings.setRejectedBrowserCertificates(rejected)
+        rejectedBrowserCertificates = rejected
+    }
+
+    suspend fun rejectBrowser(packageName: String, identity: Browsers.Identity) = browserDecisionLock.withLock {
+        val value = Browsers.reject(rejectedBrowserCertificates, packageName, identity)
+        settings.setRejectedBrowserCertificates(value)
+        rejectedBrowserCertificates = value
     }
 
     private companion object {

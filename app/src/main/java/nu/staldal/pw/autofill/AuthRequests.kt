@@ -30,40 +30,26 @@ internal class AuthRequestStore<Id>(
     private val now: () -> Long = { System.nanoTime() / 1_000_000 },
     private val lifetimeMillis: Long = 5 * 60 * 1000,
     private val capacity: Int = 128,
+) : ExpiringRequestStore<AuthDestination<Id>>(now, lifetimeMillis, capacity)
+
+/** Android-free bounded store shared by every autofill authentication round trip. */
+internal open class ExpiringRequestStore<T>(
+    private val now: () -> Long = { System.nanoTime() / 1_000_000 },
+    private val lifetimeMillis: Long = 5 * 60 * 1000,
+    private val capacity: Int = 128,
 ) {
-    init {
-        require(lifetimeMillis > 0)
-        require(capacity > 0)
-    }
+    init { require(lifetimeMillis > 0); require(capacity > 0) }
+    private data class Request<T>(val value: T, val created: Long)
+    private val requests = linkedMapOf<String, Request<T>>()
 
-    private data class Request<Id>(val destination: AuthDestination<Id>, val created: Long)
-    private val requests = linkedMapOf<String, Request<Id>>()
-
-    @Synchronized
-    fun register(destination: AuthDestination<Id>): String {
+    @Synchronized fun register(value: T): String {
         prune()
-        // Prefer recent offers; an evicted older offer deliberately fails closed.
         while (requests.size >= capacity) requests.remove(requests.keys.first())
-        val token = UUID.randomUUID().toString()
-        requests[token] = Request(destination, now())
-        return token
+        return UUID.randomUUID().toString().also { requests[it] = Request(value, now()) }
     }
-
-    @Synchronized
-    fun get(token: String): AuthDestination<Id>? {
-        prune()
-        return requests[token]?.destination
-    }
-
-    @Synchronized
-    fun take(token: String): AuthDestination<Id>? {
-        prune()
-        return requests.remove(token)?.destination
-    }
-
-    @Synchronized
-    fun cancel(token: String) { requests.remove(token) }
-
+    @Synchronized fun get(token: String): T? { prune(); return requests[token]?.value }
+    @Synchronized fun take(token: String): T? { prune(); return requests.remove(token)?.value }
+    @Synchronized fun cancel(token: String) { requests.remove(token) }
     private fun prune() {
         val time = now()
         requests.entries.removeAll { time - it.value.created >= lifetimeMillis }

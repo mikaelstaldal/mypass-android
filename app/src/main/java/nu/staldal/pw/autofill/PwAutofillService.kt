@@ -95,6 +95,34 @@ class PwAutofillService : AutofillService() {
             return
         }
 
+        if (!eligibility.trusted) {
+            if (cancellationSignal.isCanceled) {
+                callback.onSuccess(null)
+                return
+            }
+            val packageName = requester
+            val identity = eligibility.identity
+            if (packageName != null && identity != null &&
+                !Browsers.isRejected(packageName, identity, app.rejectedBrowserCertificates)) {
+                val token = BrowserEnrollmentRequests.register(EnrollmentDestination(
+                    packageName, identity, host, form.usernameId, requireNotNull(form.passwordId),
+                    focusedId, compatibilityMode))
+                if (cancellationSignal.isCanceled) {
+                    BrowserEnrollmentRequests.cancel(token)
+                    callback.onSuccess(null)
+                    return
+                }
+                FillDiagnostics.record(requester, FillOutcome.ENROLLMENT_OFFERED, compatibilityMode,
+                    form.webScheme, host, form.diagnosis.classifiedFields)
+                callback.onSuccess(FillResponses.browserEnrollment(this, form, packageName, token))
+            } else {
+                FillDiagnostics.record(requester, FillOutcome.UNTRUSTED_BROWSER, compatibilityMode,
+                    form.webScheme, host, form.diagnosis.classifiedFields)
+                callback.onSuccess(null)
+            }
+            return
+        }
+
         if (cancellationSignal.isCanceled) {
             recordCancellation(requester, compatibilityMode, form, host)
             callback.onSuccess(null)
@@ -200,7 +228,7 @@ class PwAutofillService : AutofillService() {
      * browser, reporting an eligible scheme and a usable host.
      */
     private fun eligibleHost(structure: AssistStructure, form: ParsedForm): String? =
-        eligibility(structure, form).host
+        eligibility(structure, form).takeIf { it.trusted }?.host
 
     /**
      * [eligibleHost], with the publisher check kept visible: an untrusted
@@ -211,13 +239,16 @@ class PwAutofillService : AutofillService() {
     private fun eligibility(structure: AssistStructure, form: ParsedForm): Eligibility {
         val packageName = structure.activityComponent?.packageName
         val identity = packageName?.let { BrowserCertificates.read(packageManager, it) }
-        if (!Browsers.isTrustedBrowser(packageName, identity, app.browserCertificatePins)) {
-            return Eligibility(trusted = false, host = null)
-        }
-        return Eligibility(trusted = true, host = Matching.eligibleWebHost(form.webScheme, form.webDomain))
+        val host = Matching.eligibleWebHost(form.webScheme, form.webDomain)
+        val trusted = Browsers.isTrustedBrowser(packageName, identity, app.browserCertificatePins)
+        return Eligibility(trusted, host, identity)
     }
 
-    private data class Eligibility(val trusted: Boolean, val host: String?)
+    private data class Eligibility(
+        val trusted: Boolean,
+        val host: String?,
+        val identity: Browsers.Identity?,
+    )
 
     private companion object {
         const val REQUEST_CODE_SAVE = 3
