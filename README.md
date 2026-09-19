@@ -1,9 +1,9 @@
-# pw for Android
+# MyPass for Android
 
 A password manager for Android that keeps your passwords in a single
 encrypted file, using the same **standard scrypt encrypted-data format** as
-[`pw`](https://github.com/mikaelstaldal/pw), the command line password manager it is the companion of. 
-The same `pw.scrypt` file works on both: copy it across and every entry, username,
+[`MyPass`](https://github.com/mikaelstaldal/mypass), the command line password manager it is the companion of.
+The same `mypass.scrypt` file works on both: copy it across and every entry, username,
 `url` and `realm` is there, byte for byte.
 
 All cryptography happens in-process. Nothing is uploaded anywhere; the app
@@ -20,28 +20,44 @@ gradle test                # unit tests (JVM, no device needed)
 No Gradle wrapper — uses the system `gradle` command. Point `sdk.dir` in
 `local.properties` at your Android SDK.
 
+## Migrating from pw
+
+This release is a rename, not a compatibility layer. Android treats MyPass as
+a new application (`nu.staldal.mypass`), so install it alongside or after the
+old `nu.staldal.pw` app and import the old `pw.scrypt` file explicitly. The
+default file is now `mypass.scrypt`; copy or export it before removing the old
+app. Existing biometric enrollment, settings and autofill enablement belong to
+the old package and must be configured again.
+
+Clients of the integration activity must migrate the package, permission,
+action and extra prefixes from `nu.staldal.pw` to `nu.staldal.mypass`, and
+must be signed with the new MyPass release key. Autofill browser enrollment
+and any deep links using `pw-autofill-*` or `pw-browser-enrollment` must be
+re-enrolled with the corresponding `mypass-*` schemes. No old identifiers are
+accepted.
+
 ## What it does
 
-| Screen                                                | The `pw` command it replaces           |
-|-------------------------------------------------------|----------------------------------------|
-| Unlock / Create vault                                 | `pw init`                              |
-| Entry list, with search                               | `pw list [PATTERN]`                    |
-| Entry detail — copy username, copy or reveal password | `pw get <name> [--show]`               |
-| Add entry                                             | `pw add <name> [username] …`           |
-| Edit entry (with "keep the existing password")        | `pw update <name> … [--keep-password]` |
-| Remove entry, after confirmation                      | `pw remove <name>`                     |
-| Generate password                                     | `pw generate`                          |
-| Settings → Export decrypted JSON                      | `pw export`                            |
-| Settings → Use pw for autofill                        | `pw install-browser`                   |
+| Screen                                                | The `MyPass` command it replaces           |
+|-------------------------------------------------------|--------------------------------------------|
+| Unlock / Create vault                                 | `mypass init`                              |
+| Entry list, with search                               | `mypass list [PATTERN]`                    |
+| Entry detail — copy username, copy or reveal password | `mypass get <name> [--show]`               |
+| Add entry                                             | `mypass add <name> [username] …`           |
+| Edit entry (with "keep the existing password")        | `mypass update <name> … [--keep-password]` |
+| Remove entry, after confirmation                      | `mypass remove <name>`                     |
+| Generate password                                     | `mypass generate`                          |
+| Settings → Export decrypted JSON                      | `mypass export`                            |
+| Settings → Use MyPass for autofill                    | `mypass install-browser`                   |
 
 Plus what a phone needs and a terminal does not: an auto-lock timer, optional
 fingerprint unlock, and importing and exporting the vault file through the
 system file picker.
 
 Settings can also import entries from KeePass 2.x KDBX 3.x and 4.x databases.
-The import adds the live entries to the unlocked pw vault, mapping title,
+The import adds the live entries to the unlocked MyPass vault, mapping title,
 username, password and URL. KeePass groups, history, notes, custom fields and
-attachments have no counterpart in pw and are not imported. Existing entries
+attachments have no counterpart in MyPass and are not imported. Existing entries
 remain; a duplicate or invalid title rejects the whole import without writing.
 
 The **username** is a free-form label stored alongside the password; it may be
@@ -54,22 +70,22 @@ probability.
 
 ## Getting your desktop vault onto the phone
 
-1. Copy `~/pw.scrypt` to the phone (over a cable, not through a cloud drive if
+1. Copy `~/mypass.scrypt` to the phone (over a cable, not through a cloud drive if
    you can help it — the file is encrypted, but there is no reason to hand
    anyone a copy to grind on offline).
-2. Open pw, tap **Import an existing pw.scrypt vault**, pick the file and type
+2. Open MyPass, tap **Import an existing mypass.scrypt vault**, pick the file and type
    the master passphrase.
 
 The import is verified before anything is written: it must decrypt and parse,
 so a mistyped passphrase or a truncated copy is refused while the existing
 vault is still there. It is then re-encrypted under this device's configured
-KDF cost. The local backup `pw.scrypt.bak` is replaced with a snapshot of the
+KDF cost. The local backup `mypass.scrypt.bak` is replaced with a snapshot of the
 imported vault under the imported passphrase before the primary is replaced.
 The previous local entries are discarded; export them before importing if you
 need to keep them. An interrupted import leaves a complete primary recoverable.
 
 Imported and existing vaults must have unique entry names and obey the same
-metadata rules as desktop `pw` entry creation: at most 256 Unicode code points,
+metadata rules as desktop `MyPass` entry creation: at most 256 Unicode code points,
 no control, bidirectional-control or zero-width characters, nonempty names and
 present site hints, and a URL whenever a realm is present. Legacy vaults with
 incompatible metadata are rejected with field-only errors before import changes
@@ -82,7 +98,7 @@ someone with access to the unlocked phone can export ciphertext for offline
 passphrase guessing or replace both the vault and backup with their own vault.
 Replacement requires an explicit confirmation before picking the incoming file.
 Export first, repair the indicated entry metadata using
-desktop `pw`, then import the corrected vault. Bare-array legacy vaults remain
+desktop `MyPass`, then import the corrected vault. Bare-array legacy vaults remain
 decodable but must pass these metadata checks.
 No entries are silently discarded. Presentation labels replace spoofing/control
 characters and bound text length defensively. Passwords are never sanitized.
@@ -132,10 +148,10 @@ from a malicious user-selected document/provider has not been demonstrated.
 
 ## Where the vault lives
 
-`pw.scrypt` sits in the app's private storage, where no other app on the device
+`mypass.scrypt` sits in the app's private storage, where no other app on the device
 can reach it — not on the SD card or in `Documents`, where anything with
 storage access could copy it away for an offline attack. That is also why there
-is no "open a vault from anywhere" option: the file has to be somewhere pw
+is no "open a vault from anywhere" option: the file has to be somewhere MyPass
 alone can read.
 
 Getting a vault in and out is therefore explicit, and both directions go
@@ -145,10 +161,10 @@ vault exists, **Settings → Import a vault, replacing this one**) and
 
 ## Browser integration
 
-pw is an Android **autofill service**. Turn it on in
-**Settings → Use pw for autofill** (it takes you to the system screen that
+MyPass is an Android **autofill service**. Turn it on in
+**Settings → Use MyPass for autofill** (it takes you to the system screen that
 actually grants it). On a login page, tap the username or password field and
-pw appears in the keyboard strip or in a dropdown.
+MyPass appears in the keyboard strip or in a dropdown.
 
 This is the counterpart of the desktop's Firefox integration, and it keeps the
 same rules — which are stricter than most Android password managers':
@@ -172,7 +188,7 @@ same rules — which are stricter than most Android password managers':
 - **Browsers only.** Android hands an autofill service whatever web address the
   *source app* put in the request, and does not check it. An app that could
   name a host freely could name yours, so a web address counts only when it
-  comes from a package pw recognises as a browser (see **Which browsers**
+  comes from a package MyPass recognises as a browser (see **Which browsers**
   below).
 - **Web pages only.** Native app screens are never filled. An entry's
   association with a site is its `url`, which has no meaning for an app, and
@@ -185,7 +201,7 @@ same rules — which are stricter than most Android password managers':
   field that identifies itself — an autofill hint, an `autocomplete`, `name` or
   `id` that names a user, or `type="email"` — is the username. When nothing on
   the page identifies one, it is the nearest text input *preceding* the
-  password field inside the same form, which is desktop pw's rule verbatim
+  password field inside the same form, which is desktop MyPass's rule verbatim
   (`webextension/fill.js`). Plenty of real login pages render their username
   box as a bare `<input type="text">` with no name, no id and
   `autocomplete="off"`, and no amount of name-matching recognises those.
@@ -195,16 +211,16 @@ same rules — which are stricter than most Android password managers':
   alone rather than guessed among, and a save offer names the username field
   only as optional — the required field is the password.
 
-When the vault is locked, a fill request shows a single **Unlock pw** entry
-instead of a password. Tapping it opens pw's own passphrase screen — outside
+When the vault is locked, a fill request shows a single **Unlock MyPass** entry
+instead of a password. Tapping it opens MyPass's own passphrase screen — outside
 the browser, which cannot see or drive it — and the fill then lands where you
-asked for it. Nothing about the vault is revealed by the offer: pw cannot tell
+asked for it. Nothing about the vault is revealed by the offer: MyPass cannot tell
 whether it has an entry for a site until it is open, so the offer necessarily
 comes before that is known.
 
 Each unlock offer is bound to its approved browser package, normalized host,
 username/password field IDs and original focus in a process-local
-request whose authority is consumed once at credential release. Before prompting and again before releasing a dataset, pw rechecks
+request whose authority is consumed once at credential release. Before prompting and again before releasing a dataset, MyPass rechecks
 browser publisher trust and the password field's eligible origin against that
 request. Changed destinations are refused. Requests expire after five minutes;
 process death also invalidates them. Cancelling a fill computation before its
@@ -242,7 +258,7 @@ can link a new key to a pinned one; apps with multiple signers require every
 current signer to be pinned.
 
 Other browsers, rebuilds, and differently signed distributions can be reviewed
-from pw's autofill suggestion when they first request a fill, or through
+from MyPass's autofill suggestion when they first request a fill, or through
 **Settings → Installed browser package → Review enrollment**. The prompt shows
 the requesting site, installed app, package, and SHA-256 signing certificate;
 a known browser package with an unexpected signer is called out explicitly. Install from a
@@ -256,34 +272,34 @@ shared vault and are excluded from backup/transfer.
 Built-in pins require maintenance: verify new distributions and certificate
 changes against publisher documentation, authenticated release artifacts, or
 Google's curated credential-browser release list before updating the map and
-rebuilding pw. Check for debug/test keys even when a list labels them release.
+rebuilding MyPass. Check for debug/test keys even when a list labels them release.
 Unlinked key changes and local rebuilds fail closed until deliberately enrolled;
 never substitute a package-only
-fallback. No network lookup is performed by pw.
+fallback. No network lookup is performed by MyPass.
 
 ### Why a fill did not happen
 
 Every refusal above is silent. The autofill framework gives a service no way to
 say "I declined, and here is why" — it returns no offer, and the keyboard shows
-nothing — so an unpinned certificate, a browser that never asked pw in the
+nothing — so an unpinned certificate, a browser that never asked MyPass in the
 first place, a page reporting no scheme, and an entry without a `url` all look
 identical from the outside, while each has a different fix.
 
 **Settings → Record why fills were refused** turns on a diagnostic that keeps
-the last few requests and what pw decided about each: the requesting package,
+the last few requests and what MyPass decided about each: the requesting package,
 the scheme and host it claimed, how many fields were classified, and the
 outcome. It is **off by default**, and deliberately weak as a store — the
 records live in this process's memory and are dropped when the switch goes off
-or pw stops. While enabled, the same metadata is also written to Logcat with
-tag `pw-autofill`, so it can be captured without switching back to pw. They
+or MyPass stops. While enabled, the same metadata is also written to Logcat with
+tag `mypass-autofill`, so it can be captured without switching back to MyPass. They
 hold no field contents and no entry names. Logcat retention is controlled by
-Android rather than pw; capture it over USB debugging with
-`adb logcat -s pw-autofill:I '*:S'`, and turn the diagnostic off after
+Android rather than MyPass; capture it over USB debugging with
+`adb logcat -s mypass-autofill:I '*:S'`, and turn the diagnostic off after
 collecting the result. Ordinary apps cannot read another app's Logcat output,
 but a privileged app or a device bug report can.
 
 Two things it is worth knowing before switching it on. The records name the
-hosts of pages you focused a password field on, so while it is on, pw's own
+hosts of pages you focused a password field on, so while it is on, MyPass's own
 settings screen shows a little of your browsing; `FLAG_SECURE` still applies,
 and "Clear records" drops them immediately. And on a refused request the origin
 shown is what the browser *claimed*, recorded before the eligibility rules
@@ -292,10 +308,10 @@ to decide a fill. A request that got as far as matching shows the normalized
 host instead, which is the one the entries were compared against.
 
 A common first answer it gives is that no record appears at all. That almost
-always means the browser never asked pw, which is a setting inside the browser
-rather than anything in pw: Chrome has *Settings → Autofill services → Autofill
-using another service*. Android's own **Settings → Use pw for autofill**
-has to be set too. Note that what that browser setting needs is pw *selected*,
+always means the browser never asked MyPass, which is a setting inside the browser
+rather than anything in MyPass: Chrome has *Settings → Autofill services → Autofill
+using another service*. Android's own **Settings → Use MyPass for autofill**
+has to be set too. Note that what that browser setting needs is MyPass *selected*,
 not their own autofill switched off: a browser with autofill disabled outright
 stops calling the framework, which looks the same from here.
 
@@ -303,21 +319,21 @@ What the remaining case looks like is **the framework withdrew the request**.
 Tapping a field is when that is most likely — the keyboard arrives, the page
 reflows, and Android reissues the request — and it used to be recorded as
 nothing at all, indistinguishable from never being asked. It now has its own
-outcome. A request cancelled before pw was called still leaves no record; that
+outcome. A request cancelled before MyPass was called still leaves no record; that
 one is only visible in `adb shell dumpsys autofill`, which shows whether a
 session exists for the browser.
 
 The diagnostic also says whether Android marked the request as **compatibility
-mode**. pw registers no browser for that mode. It asks the platform to derive a
+mode**. MyPass registers no browser for that mode. It asks the platform to derive a
 browser's fields from its accessibility tree instead, and while such a tree says
-enough for pw to recognise a password box, it declares no origin anywhere: the
+enough for MyPass to recognise a password box, it declares no origin anywhere: the
 only web address the framework can attach is the browser's URL bar text, which
 carries no `https:` whenever the address bar shows a bare hostname — that is,
 whenever you are looking at the page rather than the address bar. Filling from
-it would mean releasing a password to a page pw cannot identify, and paying for
+it would mean releasing a password to a page MyPass cannot identify, and paying for
 that with an accessibility bridge over every page the browser renders. If a
-device sends such a request anyway, pw applies the normal rules, the
-flag makes that visible rather than silently weakening them, and pw offers no
+device sends such a request anyway, MyPass applies the normal rules, the
+flag makes that visible rather than silently weakening them, and MyPass offers no
 *save*: a password read from an accessibility tree is the masked `••••` the
 page renders, and storing that would corrupt an entry the desktop shares.
 `adb shell dumpsys autofill` shows the framework's compatibility-mode state and
@@ -328,7 +344,7 @@ allowlist.
 Which site may receive which credential is decided by string comparison on
 hostnames, so the two sides have to normalize them identically or they disagree
 about what a name means. Two places where the obvious Android answer would have
-diverged from `../pw`:
+diverged from `../MyPass`:
 
 - **IDNA.** `java.net.IDN` implements the older IDNA2003, which folds the four
   *deviation characters* instead of leaving them alone. `faß.de` would have
@@ -353,29 +369,29 @@ The desktop integration also answers HTTP authentication challenges (the
 browser's own username/password dialog), with a stricter exact-host match and
 a `realm` to tell protection spaces apart. Android's autofill framework never
 sees those challenges — the browser answers them itself. Apps signed with the
-same key as pw can instead launch pw's password activity, which uses that
+same key as MyPass can instead launch MyPass's password activity, which uses that
 exact-host and realm rule. See [INTEGRATION.md](INTEGRATION.md). The
 `realm` field is shown, edited and round-tripped, so a vault shared with the
 desktop survives a write from this app unchanged.
 
 ### Security model
 
-| Threat | Mitigation |
-|---|---|
-| A malicious app claiming to be a web page on your bank's domain | A web address counts only from a package with a pinned or explicitly enrolled signing certificate. A sideloaded replacement under a known browser name with another certificate gets no credential or save offer; it can only present a review action that discloses the package and unexpected signer, and credentials remain unavailable unless the user explicitly trusts it. An explicitly enrolled or compromised browser can still lie about any website. |
-| Another app asking pw for a credential directly | The exported integration activity requires a signature-level permission, so Android admits only apps signed with pw's signing identity. A unique match is returned immediately once the vault is unlocked; the user chooses only when several site entries match. A successful exact-name lookup is always unique and therefore never prompts after any necessary unlock. Sharing a signing key is an install-time, non-revocable trust decision: any app holding that key can retrieve unique matches without a separate confirmation gesture, so it must be protected like the pw release key. URL requests are HTTPS-only (apart from loopback development), exact-host, and realm-aware. Exact-name requests deliberately bypass site matching for trusted native-app use. |
-| A malicious page harvesting a fill | Nothing is filled without you tapping the suggestion; there is no gesture-less path at all on Android, since the framework only asks when a field is focused. |
-| An attacker-controlled subdomain of a site you have an entry for | Parent-domain matching is bounded by the Public Suffix List, and only ever climbs *up* from the visited host — an entry for `login.example.com` is never released to `example.com`. |
-| Phishing domain (`github.com.evil.example`) | Suffix matching at label boundaries bounded by the Public Suffix List — only `evil.example`'s own entries can match. |
-| A page provoking a passphrase prompt | The prompt is pw's own activity, opened by the framework only after you tap the suggestion. A page can put the *suggestion* in front of you; it cannot type on it. |
-| A compromised browser reading the vault | The browser never receives the vault, the passphrase, or any entry it did not match — only the username and password of the entry you picked, for the field you picked it in. |
-| Adjacent forms or frames causing the wrong account to be filled | Exactly one candidate field must be focused. On Android 9 (API 28), this requires the browser to report the node focus flag; browsers that omit it receive no offer. Android 10+ uses the framework focused ID. Pairing requires the same eligible origin and enclosing HTML form, or immediate parent container when no form is reported. Multiple password fields (including password confirmation on registration forms) are refused when the username is focused; focusing the intended password still works. Ambiguous usernames are omitted. Missing container metadata permits only a focused password, without a username. A username field that identifies itself outranks position; when none does, the nearest text input preceding the password in the same form is used, never one after it and never one in another form or origin. These boundaries depend on the form/container tree the browser reports; a flattened tree cannot distinguish unreported forms. |
-| A cross-origin iframe collecting the outer page's credential | The origin is taken from the password field's own node, not from the page as a whole, and a username field on a different origin is dropped rather than filled. A new origin declaration replaces both scheme and domain, including missing components. A field's own origin annotation — browsers attach one to each field of a form that spans frames — settles that field's origin but not which form it belongs to; a document boundary still resets the enclosing form for everything below it, and pairing requires the same origin as well as the same container, so neither check alone carries the boundary. |
-| An accessibility-derived view of a browser's pages | pw registers no browser for Android's autofill compatibility mode, so it asks for none. Such a tree declares no origin — the only address in it is the browser's URL bar text, which usually has no scheme — so the page a password would go to cannot be identified, which is exactly what the rules above turn on. A request that arrives marked compatibility mode anyway is judged by those same rules, is shown as such in the diagnostic, and is never offered a save, because the password in it is the masked text the page renders. |
-| Another app reading the vault file | It lives in the app's private storage, owner-only, and is never backed up to the cloud or transferred to a new device (`backup_rules.xml`). |
-| Screenshots, the recents thumbnail, screen recording | Every pw window sets `FLAG_SECURE`. |
-| A shoulder-surfer, screenshot, or Logcat reader observes the refusal diagnostic | It is off by default and holds no field contents and no entry names — the requesting package, the claimed origin, a field count and the decision. While on, it names hosts you focused a password field on both in pw's memory and under the `pw-autofill` Logcat tag. Turning it off clears pw's copy; Android controls Logcat retention. |
-| Clipboard sniffers | The autofill path does not use the clipboard at all. A password copied by hand is flagged sensitive (kept out of the system clipboard preview and history on Android 13+) and cleared after the timeout in Settings or when the vault locks. If Android prevents safe ownership verification while pw is backgrounded, clearing waits until pw next enters the foreground rather than overwriting a newer clip. |
+| Threat                                                                          | Mitigation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+|---------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| A malicious app claiming to be a web page on your bank's domain                 | A web address counts only from a package with a pinned or explicitly enrolled signing certificate. A sideloaded replacement under a known browser name with another certificate gets no credential or save offer; it can only present a review action that discloses the package and unexpected signer, and credentials remain unavailable unless the user explicitly trusts it. An explicitly enrolled or compromised browser can still lie about any website.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Another app asking MyPass for a credential directly                             | The exported integration activity requires a signature-level permission, so Android admits only apps signed with MyPass's signing identity. A unique match is returned immediately once the vault is unlocked; the user chooses only when several site entries match. A successful exact-name lookup is always unique and therefore never prompts after any necessary unlock. Sharing a signing key is an install-time, non-revocable trust decision: any app holding that key can retrieve unique matches without a separate confirmation gesture, so it must be protected like the MyPass release key. URL requests are HTTPS-only (apart from loopback development), exact-host, and realm-aware. Exact-name requests deliberately bypass site matching for trusted native-app use.                                                                                                                                                                                          |
+| A malicious page harvesting a fill                                              | Nothing is filled without you tapping the suggestion; there is no gesture-less path at all on Android, since the framework only asks when a field is focused.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| An attacker-controlled subdomain of a site you have an entry for                | Parent-domain matching is bounded by the Public Suffix List, and only ever climbs *up* from the visited host — an entry for `login.example.com` is never released to `example.com`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Phishing domain (`github.com.evil.example`)                                     | Suffix matching at label boundaries bounded by the Public Suffix List — only `evil.example`'s own entries can match.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| A page provoking a passphrase prompt                                            | The prompt is MyPass's own activity, opened by the framework only after you tap the suggestion. A page can put the *suggestion* in front of you; it cannot type on it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| A compromised browser reading the vault                                         | The browser never receives the vault, the passphrase, or any entry it did not match — only the username and password of the entry you picked, for the field you picked it in.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Adjacent forms or frames causing the wrong account to be filled                 | Exactly one candidate field must be focused. On Android 9 (API 28), this requires the browser to report the node focus flag; browsers that omit it receive no offer. Android 10+ uses the framework focused ID. Pairing requires the same eligible origin and enclosing HTML form, or immediate parent container when no form is reported. Multiple password fields (including password confirmation on registration forms) are refused when the username is focused; focusing the intended password still works. Ambiguous usernames are omitted. Missing container metadata permits only a focused password, without a username. A username field that identifies itself outranks position; when none does, the nearest text input preceding the password in the same form is used, never one after it and never one in another form or origin. These boundaries depend on the form/container tree the browser reports; a flattened tree cannot distinguish unreported forms. |
+| A cross-origin iframe collecting the outer page's credential                    | The origin is taken from the password field's own node, not from the page as a whole, and a username field on a different origin is dropped rather than filled. A new origin declaration replaces both scheme and domain, including missing components. A field's own origin annotation — browsers attach one to each field of a form that spans frames — settles that field's origin but not which form it belongs to; a document boundary still resets the enclosing form for everything below it, and pairing requires the same origin as well as the same container, so neither check alone carries the boundary.                                                                                                                                                                                                                                                                                                                                                           |
+| An accessibility-derived view of a browser's pages                              | MyPass registers no browser for Android's autofill compatibility mode, so it asks for none. Such a tree declares no origin — the only address in it is the browser's URL bar text, which usually has no scheme — so the page a password would go to cannot be identified, which is exactly what the rules above turn on. A request that arrives marked compatibility mode anyway is judged by those same rules, is shown as such in the diagnostic, and is never offered a save, because the password in it is the masked text the page renders.                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Another app reading the vault file                                              | It lives in the app's private storage, owner-only, and is never backed up to the cloud or transferred to a new device (`backup_rules.xml`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Screenshots, the recents thumbnail, screen recording                            | Every MyPass window sets `FLAG_SECURE`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| A shoulder-surfer, screenshot, or Logcat reader observes the refusal diagnostic | It is off by default and holds no field contents and no entry names — the requesting package, the claimed origin, a field count and the decision. While on, it names hosts you focused a password field on both in MyPass's memory and under the `mypass-autofill` Logcat tag. Turning it off clears MyPass's copy; Android controls Logcat retention.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Clipboard sniffers                                                              | The autofill path does not use the clipboard at all. A password copied by hand is flagged sensitive (kept out of the system clipboard preview and history on Android 13+) and cleared after the timeout in Settings or when the vault locks. If Android prevents safe ownership verification while MyPass is backgrounded, clearing waits until MyPass next enters the foreground rather than overwriting a newer clip.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 
 ## File format and recovery
 
@@ -390,11 +406,11 @@ document the desktop writes:
 ```
 
 Because the container is the standard format, the vault can always be
-recovered without pw, using the common
+recovered without MyPass, using the common
 [scrypt](https://www.tarsnap.com/scrypt.html) tool:
 
 ```sh
-scrypt dec pw.scrypt
+scrypt dec mypass.scrypt
 ```
 
 Export the file with **Settings → Export encrypted vault** first. The
@@ -402,8 +418,8 @@ known-answer fixture in `app/src/test/resources/known_answer.scrypt` is the
 desktop repository's own, generated by scrypt 1.3.2, and `InteropTest` fails
 the build if this app can no longer read it.
 
-Writes are atomic (write to `pw.scrypt.tmp`, fsync, rename). Ordinary edits keep
-the previous version as `pw.scrypt.bak`; rotation and import instead retain a
+Writes are atomic (write to `mypass.scrypt.tmp`, fsync, rename). Ordinary edits keep
+the previous version as `mypass.scrypt.bak`; rotation and import instead retain a
 snapshot of the incoming vault under its passphrase. A crash mid-write can never
 leave a truncated vault.
 
@@ -417,7 +433,7 @@ that a vault written with a lower cost still opens fine on the desktop.
 - **The decrypted vault is held in memory while it is unlocked.** The CLI
   re-derives the key from a freshly typed passphrase on every command; a phone
   cannot ask for a 30-character passphrase per operation. Auto-lock bounds how
-  long — five minutes of inactivity by default, and **Lock when pw leaves the
+  long — five minutes of inactivity by default, and **Lock when MyPass leaves the
   screen** makes it immediate. The window is enforced by a timer, not only when
   something next reads the vault, so a screen left open on a revealed password
   relocks on time; a process that was frozen or dozing may run the timer late,
@@ -428,7 +444,7 @@ that a vault written with a lower cost still opens fine on the desktop.
   bytes and wipes them, and the decrypted plaintext buffer and derived keys are
   wiped, but a password is a `String`, and neither ART nor the JVM lets a
   `String`'s backing array be cleared — the JSON parser would have made its own
-  copies anyway. pw-android relies on process isolation and a short auto-lock
+  copies anyway. mypass-android relies on process isolation and a short auto-lock
   instead. The desktop's `Zeroizing`/`ZeroizeOnDrop` guarantee has no honest
   equivalent here, so it is not claimed.
 - **Fingerprint unlock trades the passphrase for the device's biometric gate.**
@@ -439,7 +455,7 @@ that a vault written with a lower cost still opens fine on the desktop.
   fingerprint destroys it rather than granting the new finger access. Only the
   wrapped bytes are stored. Changing the master passphrase turns it off, since
   the wrapped copy would no longer open the vault.
-- **A clipboard history manager may keep a copy pw cannot reach.** The clip is
+- **A clipboard history manager may keep a copy MyPass cannot reach.** The clip is
   flagged sensitive, which keeps it out of the system's own clipboard history
   on Android 13 and later, but a third-party clipboard manager is not obliged
   to honour that. The autofill path avoids the clipboard entirely, so prefer it
@@ -452,17 +468,17 @@ that a vault written with a lower cost still opens fine on the desktop.
 The library half mirrors the desktop's, layer for layer, so the two can be read
 side by side:
 
-| pw-android | pw |
-|---|---|
-| `crypto/ScryptFormat.kt` | `src/scrypt_format.rs` |
-| `vault/Vault.kt`, `vault/PasswordEntry.kt`, `Secret`, `Passphrase` | `src/vault.rs` |
-| `data/Matching.kt`, `data/Validation.kt`, `data/PasswordGenerator.kt`, `data/PwRepository.kt` | `src/lib.rs` |
-| `ui/**`, `MainActivity` | `src/main.rs` (the CLI) |
-| `autofill/**` | `src/bin/pw-browser-host/` + `webextension/` |
-| `integration/**` | `src/lib.rs` exact-name and exact-host/realm lookup rules |
+| mypass-android                                                                                    | MyPass                                                    |
+|---------------------------------------------------------------------------------------------------|-----------------------------------------------------------|
+| `crypto/ScryptFormat.kt`                                                                          | `src/scrypt_format.rs`                                    |
+| `vault/Vault.kt`, `vault/PasswordEntry.kt`, `Secret`, `Passphrase`                                | `src/vault.rs`                                            |
+| `data/Matching.kt`, `data/Validation.kt`, `data/PasswordGenerator.kt`, `data/MyPassRepository.kt` | `src/lib.rs`                                              |
+| `ui/**`, `MainActivity`                                                                           | `src/main.rs` (the CLI)                                   |
+| `autofill/**`                                                                                     | `src/bin/mypass-browser-host/` + `webextension/`          |
+| `integration/**`                                                                                  | `src/lib.rs` exact-name and exact-host/realm lookup rules |
 
 Errors are layered the same way too: `ScryptFormatException` →
-`VaultException` → `PwException`, with wrong-passphrase, corrupt-vault and I/O
+`VaultException` → `MyPassException`, with wrong-passphrase, corrupt-vault and I/O
 kept distinct.
 
 ## License

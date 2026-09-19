@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Pw" parent="android:Theme.Material.Light.NoActionBar">
+    <style name="Theme.MyPass" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
     </style>
 
     <!--
       The autofill authentication and save screens are dialogs over the
-      browser: they must not look like pw was launched, and must not take the
+      browser: they must not look like MyPass was launched, and must not take the
       browser off the screen.
     -->
-    <style name="Theme.Pw.Transparent" parent="android:Theme.Material.Light.NoActionBar">
+    <style name="Theme.MyPass.Transparent" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowContentOverlay">@null</item>

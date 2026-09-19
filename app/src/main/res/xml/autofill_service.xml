@@ -7,9 +7,9 @@
   attach is the browser's URL bar text, which has no scheme whenever the address
   bar shows a bare hostname — which is whenever the user is looking at the page
   rather than the address bar. Filling from it would mean releasing a password
-  to a page pw cannot identify, and paying for that with an accessibility bridge
+  to a page MyPass cannot identify, and paying for that with an accessibility bridge
   over every page the browser renders.
   AutofillServiceMetadataTest keeps it out; README explains it.
 -->
 <autofill-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:settingsActivity="nu.staldal.pw.MainActivity" />
+    android:settingsActivity="nu.staldal.mypass.MainActivity" />

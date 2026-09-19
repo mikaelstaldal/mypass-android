@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <permission
-        android:name="nu.staldal.pw.permission.FETCH_PASSWORD"
+        android:name="nu.staldal.mypass.permission.FETCH_PASSWORD"
         android:label="@string/fetch_password_permission_label"
         android:protectionLevel="signature" />
 
@@ -22,7 +22,7 @@
     </queries>
 
     <application
-        android:name=".PwApplication"
+        android:name=".MyPassApplication"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -30,7 +30,7 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Pw">
+        android:theme="@style/Theme.MyPass">
 
         <activity
             android:name=".MainActivity"
@@ -48,12 +48,12 @@
             android:exported="true"
             android:excludeFromRecents="true"
             android:label="@string/fetch_password_activity_label"
-            android:permission="nu.staldal.pw.permission.FETCH_PASSWORD"
+            android:permission="nu.staldal.mypass.permission.FETCH_PASSWORD"
             android:taskAffinity=""
-            android:theme="@style/Theme.Pw"
+            android:theme="@style/Theme.MyPass"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
-                <action android:name="nu.staldal.pw.action.FETCH_PASSWORD" />
+                <action android:name="nu.staldal.mypass.action.FETCH_PASSWORD" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
@@ -68,7 +68,7 @@
             android:exported="false"
             android:excludeFromRecents="true"
             android:taskAffinity=""
-            android:theme="@style/Theme.Pw.Transparent"
+            android:theme="@style/Theme.MyPass.Transparent"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
@@ -76,7 +76,7 @@
             android:exported="false"
             android:excludeFromRecents="true"
             android:taskAffinity=""
-            android:theme="@style/Theme.Pw.Transparent" />
+            android:theme="@style/Theme.MyPass.Transparent" />
 
         <!-- Opened when the framework offers to save a login. -->
         <activity
@@ -84,11 +84,11 @@
             android:exported="false"
             android:excludeFromRecents="true"
             android:taskAffinity=""
-            android:theme="@style/Theme.Pw.Transparent"
+            android:theme="@style/Theme.MyPass.Transparent"
             android:windowSoftInputMode="adjustResize" />
 
         <service
-            android:name=".autofill.PwAutofillService"
+            android:name=".autofill.MyPassAutofillService"
             android:exported="true"
             android:label="@string/autofill_service_label"
             android:permission="android.permission.BIND_AUTOFILL_SERVICE">

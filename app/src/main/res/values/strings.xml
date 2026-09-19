@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">pw</string>
-    <string name="fetch_password_permission_label">Fetch passwords from pw</string>
-    <string name="fetch_password_activity_label">Choose a pw password</string>
+    <string name="app_name">MyPass</string>
+    <string name="fetch_password_permission_label">Fetch passwords from MyPass</string>
+    <string name="fetch_password_activity_label">Choose a MyPass password</string>
 
-    <string name="autofill_service_label">pw</string>
-    <string name="autofill_unlock_title">Unlock pw</string>
+    <string name="autofill_service_label">MyPass</string>
+    <string name="autofill_unlock_title">Unlock MyPass</string>
     <string name="autofill_unlock_subtitle">Sign in to %1$s</string>
-    <string name="autofill_save_unavailable">Unable to identify a safe login form to save. Open pw to add the login.</string>
+    <string name="autofill_save_unavailable">Unable to identify a safe login form to save. Open MyPass to add the login.</string>
 </resources>

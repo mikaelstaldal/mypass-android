@@ -34,7 +34,7 @@ fun signingProperty(key: String, env: String): String? =
     (localProperties.getProperty(key) ?: System.getenv(env))?.takeIf { it.isNotBlank() }
 
 android {
-    namespace = "nu.staldal.pw"
+    namespace = "nu.staldal.mypass"
     compileSdk = 36
 
     signingConfigs {
@@ -52,7 +52,7 @@ android {
                 keyPassword = keyPw
             } else {
                 logger.warn(
-                    "pw: no shared debug signing key configured (see app/build.gradle.kts); " +
+                    "mypass: no shared debug signing key configured (see app/build.gradle.kts); " +
                         "falling back to the default debug keystore."
                 )
             }
@@ -60,7 +60,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "nu.staldal.pw"
+        applicationId = "nu.staldal.mypass"
         // API 28 is the first release where AssistStructure.ViewNode exposes
         // getWebScheme(). Without it the autofill service cannot tell an
         // https: page from an http: one, and the browser integration's

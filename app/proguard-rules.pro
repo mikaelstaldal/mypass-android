@@ -18,9 +18,9 @@
 
 # kotlinx.serialization generates serializer() companions that R8 cannot see
 # are used.
--keepclassmembers class nu.staldal.pw.** {
+-keepclassmembers class nu.staldal.mypass.** {
     *** Companion;
 }
--keepclasseswithmembers class nu.staldal.pw.** {
+-keepclasseswithmembers class nu.staldal.mypass.** {
     kotlinx.serialization.KSerializer serializer(...);
 }

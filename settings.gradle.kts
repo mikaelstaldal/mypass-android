@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "pw-android"
+rootProject.name = "mypass-android"
 include(":app")
